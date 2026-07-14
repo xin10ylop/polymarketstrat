@@ -17,7 +17,7 @@ import requests
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 DATA = os.path.join(ROOT, "data")
 API = "https://api.telonex.io/v1/downloads/polymarket/{channel}/{date}"
-NUM_WORKERS = 10
+NUM_WORKERS = 20
 
 GAP_DAYS = ([("2026-05-13", "2026-07-05")], [("2026-07-08", "2026-07-13")])
 
@@ -62,17 +62,22 @@ def fetch():
 
     tasks = queue.Queue()
     n = 0
+    # fetch only the window's own calendar day (validation needs +60s..settle windows,
+    # all same-day); prioritize 5m, then 15m, then 4h
+    sel = sel.copy()
+    sel["fam_order"] = sel.fam.map({"5m": 0, "15m": 1, "4h": 2})
+    sel = sel.sort_values(["fam_order", "wdate"])
     for _, r in sel.iterrows():
+        d = r.wdate
         for channel, cfrom, cto in [("trades", r.trades_from, r.trades_to),
                                     ("quotes", r.quotes_from, r.quotes_to)]:
-            if not cfrom:
+            if not cfrom or d < cfrom or d > cto:
                 continue
-            for d in daterange(cfrom, cto):
-                out = os.path.join(DATA, "tlx", "gap", r.fam, channel, d, f"{r.slug}.parquet")
-                if os.path.exists(out):
-                    continue
-                tasks.put((channel, d, r.slug, out))
-                n += 1
+            out = os.path.join(DATA, "tlx", "gap", r.fam, channel, d, f"{r.slug}.parquet")
+            if os.path.exists(out):
+                continue
+            tasks.put((channel, d, r.slug, out))
+            n += 1
     print(f"{n} files to fetch", flush=True)
     done = [0]
     errs = [0]
