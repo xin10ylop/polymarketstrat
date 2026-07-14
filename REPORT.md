@@ -131,7 +131,12 @@ excluding those days moves no OOS number by more than 0.1c.
 - Kill-switches: #1 — if a fill ever settles at 0 (oracle misread), halt; #2 — if daily PnL
   < −$5 or win rate over trailing 50 trades < 60%, halt and re-measure the basis estimator.
 
-## Data assets produced (all pushed to the vault)
+## Data assets produced
+
+**Vault upload is currently blocked: the Backblaze account hit its storage cap** (raise it on
+B2's Caps & Alerts page, then re-run `python3 scripts/b2_upload.py` — it is idempotent and will
+resume where it stopped). Until then these assets exist only in the session container; every one
+of them is reproducible from scripts (Telonex gap fetch ≈ 1–2 h, Binance/Chainlink rebuilds ≈ 30 min).
 `data/processed/daily/1h/{trades,quotes}` (275 days, consolidated), `binance/{klines_1s,btc_1s,chainlink_1s}`,
 `tlx/btc_updown_markets.parquet` (93k-market catalog), `windows_full.parquet` (92,741 windows),
 `features/*` (per-window snapshots, path grids, trade aggregates, masters, model grids),
