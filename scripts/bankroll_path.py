@@ -9,22 +9,21 @@ import os
 import numpy as np
 import pandas as pd
 
-ENTRY_PX = {  # approximate entry price per strategy for return-on-stake conversion
-    "S1_fav_harvest": None,   # uses pnl / 0.87 (mean favorite cost)
-    "S2_snipe_5m": None,      # pnl / 0.70 (mean snipe cost)
-    "S2_snipe_15m": None,
-    "S3_toll": 0.992,
-}
-FALLBACK_COST = {"S1_fav_harvest": 0.87, "S2_snipe_5m": 0.70, "S2_snipe_15m": 0.70, "S3_toll": 0.992}
+# OOS survivors only: S1 failed walk-forward, S2 15m was a basis artifact
+SURVIVORS = ["S2_snipe_5m", "S3_toll_5m", "S3_toll_15m"]
+FALLBACK_COST = {"S2_snipe_5m": 0.70, "S3_toll_5m": 0.992, "S3_toll_15m": 0.992}
 
 
 def main():
     frames = []
-    for f in glob.glob("results/trades_*_test.csv"):
-        strat = os.path.basename(f)[len("trades_"):-len("_test.csv")]
+    for strat in SURVIVORS:
+        f = f"results/trades_{strat}_test.csv"
         df = pd.read_csv(f)
         df["strategy"] = strat
-        df["t_fill"] = df.wts + df.get("entry_t", pd.Series(60, index=df.index)).fillna(60)
+        default_t = {"S2_snipe_5m": 295.0, "S3_toll_5m": 302.0, "S3_toll_15m": 902.0}[strat]
+        if "entry_t" not in df:
+            df["entry_t"] = default_t
+        df["t_fill"] = df.wts + df.entry_t.fillna(default_t)
         df["cost"] = FALLBACK_COST.get(strat, 0.8)
         frames.append(df[["strategy", "t_fill", "pnl", "cost", "date"]])
     allt = pd.concat(frames).sort_values("t_fill").reset_index(drop=True)

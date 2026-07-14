@@ -86,13 +86,19 @@ def s2_snipe(fam="5m", off=295):
                                  "result", "date", "ts_s", "K", "duration"])
     g = g[(g.off == off) & g.ask_price.notna()]
     b = pd.read_parquet("data/binance/btc_1s.parquet", columns=["ts", "close", "vol_300"])
+    # Binance<->Chainlink basis correction (USDT basis drifted to ~5bp in Jun-Jul 2026,
+    # dwarfing 5s vol; a live bot estimates it from the live oracle feed the same way)
+    cl = pd.read_parquet("data/binance/chainlink_1s.parquet", columns=["ts", "cl_price"])
+    b = b.merge(cl, on="ts", how="left")
+    b["basis"] = (b.cl_price.ffill() / b.close).rolling(60, min_periods=10).median()
     for shift, variant in [(1, "signal@T-5 (1s-lag binance)"), (2, "signal@T-6 (2s stale)")]:
         bb = b.rename(columns={"close": "S_lag", "vol_300": "vol_lag"}).copy()
         bb["ts"] = bb.ts + shift
-        gg = g.merge(bb, left_on="ts_s", right_on="ts", how="left")
-        gg = gg[gg.S_lag.notna()]
+        gg = g.merge(bb[["ts", "S_lag", "vol_lag", "basis"]], left_on="ts_s", right_on="ts", how="left")
+        gg = gg[gg.S_lag.notna() & gg.basis.notna()]
         tau = gg.duration - gg.off
-        gg["fv_lag"] = norm.cdf(np.log(gg.S_lag / gg.K) / (np.maximum(gg.vol_lag, 1e-6) * np.sqrt(tau)))
+        gg["fv_lag"] = norm.cdf(np.log(gg.S_lag * gg.basis / gg.K)
+                                / (np.maximum(gg.vol_lag, 1e-6) * np.sqrt(tau)))
         up = gg.result == 0
         bu = (gg.fv_lag >= 0.995) & (gg.ask_price <= 0.97) & (gg.ask_size >= 12)
         bd = (gg.fv_lag <= 0.005) & ((1 - gg.bid_price) <= 0.97) & (gg.bid_size >= 12)
@@ -149,6 +155,9 @@ def s3_toll():
 
 if __name__ == "__main__":
     which = sys.argv[1] if len(sys.argv) > 1 else "all"
+    if which == "s2":
+        s2_snipe("5m", 295)
+        s2_snipe("15m", 885)
     if which in ("all", "5m"):
         s2_snipe("5m", 295)
         s1_favorite_harvest()

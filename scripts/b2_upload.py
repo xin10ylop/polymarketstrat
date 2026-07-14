@@ -26,6 +26,14 @@ def gather():
         d = os.path.join(DATA, sub)
         if os.path.isdir(d):
             rels += [os.path.join(sub, f) for f in sorted(os.listdir(d)) if f.endswith(".parquet")]
+    # gap-recovered tick days (pre-gap days already live in the vault's original layout)
+    for fam in ["5m", "15m", "4h"]:
+        for kind in ["quotes", "trades"]:
+            sub = f"daily/{fam}/{kind}"
+            d = os.path.join(DATA, sub)
+            if os.path.isdir(d):
+                rels += [os.path.join(sub, f) for f in sorted(os.listdir(d))
+                         if f.endswith(".parquet") and f[:-8] >= "2026-05-13"]
     for f in ["binance/btc_1s.parquet", "binance/chainlink_1s.parquet",
               "tlx/btc_updown_markets.parquet", "windows_full.parquet"]:
         if os.path.exists(os.path.join(DATA, f)):
