@@ -19,7 +19,7 @@ DATA = os.path.join(ROOT, "data")
 API = "https://api.telonex.io/v1/downloads/polymarket/{channel}/{date}"
 NUM_WORKERS = 20
 
-GAP_DAYS = ([("2026-05-13", "2026-07-05")], [("2026-07-08", "2026-07-13")])
+GAP_DAYS = ([("2026-05-13", "2026-07-06")], [("2026-07-08", "2026-07-13")])
 
 
 def load_env(path):
@@ -73,6 +73,8 @@ def fetch():
                                     ("quotes", r.quotes_from, r.quotes_to)]:
             if not cfrom or d < cfrom or d > cto:
                 continue
+            if os.path.exists(os.path.join(DATA, "daily", r.fam, channel, f"{d}.parquet")):
+                continue  # day already consolidated
             out = os.path.join(DATA, "tlx", "gap", r.fam, channel, d, f"{r.slug}.parquet")
             if os.path.exists(out):
                 continue
