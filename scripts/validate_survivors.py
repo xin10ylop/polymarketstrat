@@ -20,11 +20,14 @@ TEST_START = "2026-05-16"
 OUT = []
 
 
-def log(strategy, variant, period, res_df, extra=""):
+def log(strategy, variant, period, res_df, extra="", dump=False):
     f = res_df[res_df.filled] if "filled" in res_df else res_df
     if len(f) == 0:
         OUT.append(dict(strategy=strategy, variant=variant, period=period, fills=0))
         return
+    if dump and period == "test":
+        cols = [c for c in ["wts", "date", "pnl", "entry_t", "token"] if c in f.columns]
+        f[cols].to_csv(f"results/trades_{strategy}_{period}.csv", index=False)
     days = res_df.date.nunique()
     row = dict(strategy=strategy, variant=variant, period=period,
                orders=len(res_df), fills=len(f),
@@ -58,7 +61,7 @@ def s1_favorite_harvest():
             if variant != "base qm=2" and period == "train":
                 continue
             res = bt.run(sub.drop(columns=["date"])).merge(sub[["wts", "date"]], on="wts")
-            log("S1_fav_harvest", variant, period, res)
+            log("S1_fav_harvest", variant, period, res, dump=(variant == "base qm=2"))
     # band + offset sensitivity on test only (qm=2)
     bt = TapeBacktester("5m", queue_mult=2.0)
     for off in [45, 90]:
@@ -77,11 +80,11 @@ def s1_favorite_harvest():
         log("S1_fav_harvest", f"entry@{off}s", "test", res)
 
 
-def s2_snipe():
-    g = pd.read_parquet("data/features/5m_grid_model.parquet",
+def s2_snipe(fam="5m", off=295):
+    g = pd.read_parquet(f"data/features/{fam}_grid_model.parquet",
                         columns=["wts", "off", "bid_price", "ask_price", "bid_size", "ask_size",
                                  "result", "date", "ts_s", "K", "duration"])
-    g = g[(g.off == 295) & g.ask_price.notna()]
+    g = g[(g.off == off) & g.ask_price.notna()]
     b = pd.read_parquet("data/binance/btc_1s.parquet", columns=["ts", "close", "vol_300"])
     for shift, variant in [(1, "signal@T-5 (1s-lag binance)"), (2, "signal@T-6 (2s stale)")]:
         bb = b.rename(columns={"close": "S_lag", "vol_300": "vol_lag"}).copy()
@@ -96,11 +99,13 @@ def s2_snipe():
         pnl_u = up[bu].astype(float) - gg.ask_price[bu] - 0.07 * gg.ask_price[bu] * (1 - gg.ask_price[bu])
         pnl_d = (~up[bd]).astype(float) - (1 - gg.bid_price[bd]) - 0.07 * (1 - gg.bid_price[bd]) * gg.bid_price[bd]
         res = pd.DataFrame({"pnl": pd.concat([pnl_u, pnl_d]),
-                            "date": pd.concat([gg.date[bu], gg.date[bd]])})
+                            "date": pd.concat([gg.date[bu], gg.date[bd]]),
+                            "wts": pd.concat([gg.wts[bu], gg.wts[bd]])})
         res["filled"] = True
         for period, sub in [("train", res[res.date < TEST_START]),
                             ("test", res[res.date >= TEST_START])]:
-            log("S2_snipe", variant, period, sub, extra="ask<=.97 sz>=12")
+            log(f"S2_snipe_{fam}", variant, period, sub, extra="ask<=.97 sz>=12",
+                dump=(shift == 1))
         if shift == 1:
             # deeper-disagreement variant
             bu2 = (gg.fv_lag >= 0.995) & (gg.ask_price <= 0.80) & (gg.ask_size >= 12)
@@ -110,7 +115,7 @@ def s2_snipe():
             r2 = pd.DataFrame({"pnl": p2, "date": pd.concat([gg.date[bu2], gg.date[bd2]])})
             r2["filled"] = True
             for period, sub in [("train", r2[r2.date < TEST_START]), ("test", r2[r2.date >= TEST_START])]:
-                log("S2_snipe", "deep ask<=.80", period, sub)
+                log(f"S2_snipe_{fam}", "deep ask<=.80", period, sub)
 
 
 def s3_toll():
@@ -143,9 +148,13 @@ def s3_toll():
 
 
 if __name__ == "__main__":
-    s2_snipe()
-    s1_favorite_harvest()
-    s3_toll()
+    which = sys.argv[1] if len(sys.argv) > 1 else "all"
+    if which in ("all", "5m"):
+        s2_snipe("5m", 295)
+        s1_favorite_harvest()
+        s3_toll()
+    if which in ("all", "15m"):
+        s2_snipe("15m", 885)
     df = pd.DataFrame(OUT)
-    df.to_csv("results/validation.csv", index=False)
+    df.to_csv(f"results/validation_{which}.csv", index=False)
     print(df.drop(columns=["monthly"], errors="ignore").to_string())
