@@ -63,14 +63,13 @@ class Ledger:
         # mark PnL on this window's fills: winner token pays 1, loser pays 0
         if winner is not None:
             win_tok = token_of(winner)
-            for oid, tok, px, sz, fee in self.db.execute(
-                    "SELECT order_id,token,price,size,fee FROM fills "
-                    "WHERE wts=? AND settle IS NULL", (wts,)):
+            for rowid, tok, px, sz, fee in self.db.execute(
+                    "SELECT rowid,token,price,size,fee FROM fills "
+                    "WHERE wts=? AND settle IS NULL", (wts,)).fetchall():
                 settle = 1.0 if tok == win_tok else 0.0
                 pnl = (settle - px) * sz - fee
-                self.db.execute(
-                    "UPDATE fills SET settle=?, pnl=? WHERE order_id=? AND token=? "
-                    "AND settle IS NULL", (settle, pnl, oid, tok))
+                self.db.execute("UPDATE fills SET settle=?, pnl=? WHERE rowid=?",
+                                (settle, pnl, rowid))
         self.db.commit()
         return mismatch
 
