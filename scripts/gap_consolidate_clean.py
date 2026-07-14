@@ -21,14 +21,14 @@ def main(consolidate_all=False, fams=("5m", "15m", "4h")):
         wmap = dict(zip(w[w.family == fam].slug, w[w.family == fam].wts))
         base_q = os.path.join(DATA, "tlx", "gap", fam, "quotes")
         base_t = os.path.join(DATA, "tlx", "gap", fam, "trades")
-        if not os.path.isdir(base_q):
-            continue
-        days = sorted(os.listdir(base_q))
-        if not days:
-            continue
-        frontier = days[-1] if consolidate_all else days[-1]
-        done_days = days if consolidate_all else [d for d in days if d < frontier]
         for kind, base in [("quotes", base_q), ("trades", base_t)]:
+            if not os.path.isdir(base):
+                continue
+            days = sorted(os.listdir(base))
+            if not days:
+                continue
+            # frontier rule per channel: the max date dir may still be downloading
+            done_days = days if consolidate_all else days[:-1]
             for day in done_days:
                 src_dir = os.path.join(base, day)
                 if not os.path.isdir(src_dir):
