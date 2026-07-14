@@ -1,0 +1,19 @@
+[Unit]
+Description=Polymarket BTC 5m paper trading bot
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/polymarketstrat
+Environment=BOT_MODE=paper
+Environment=SPOT_FEED=coinbase
+Environment=LOG_LEVEL=INFO
+ExecStart=/opt/polymarketstrat/venv/bin/python -m bot.main
+Restart=always
+RestartSec=5
+# hard memory lid; the bot uses ~100MB
+MemoryMax=1G
+
+[Install]
+WantedBy=multi-user.target
