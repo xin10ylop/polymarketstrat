@@ -93,6 +93,8 @@ def load_1h_day(kind, day):
     if not dfs:
         return None
     df = pd.concat(dfs, ignore_index=True)
+    df = df.dropna(subset=["wts"])
+    df["wts"] = df.wts.astype("int64")
     if kind == "quotes":
         return df[["timestamp_us", "wts", "bid_price", "bid_size", "ask_price", "ask_size"]]
     return df[["timestamp_us", "wts", "price", "size", "side"]]

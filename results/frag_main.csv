@@ -2,3 +2,20 @@ id,area,hypothesis,family,period,method,metric,value,n,verdict,notes
 MAIN-1,G,post-close winner-dump toll (maker bid 0.99+ on determined winner),5m,train-sample-7d,tape count of sell-aggressor prints <=0.995 on winner in (T+1s;settle],windows/day with >=10sh,265,1857,PROMISING,median 4k shares dumped per window; 0.5-1c/share riskless; needs queue realism + live chainlink read
 MAIN-2,G4,ML pre-open side classifier (LGBM 29 features),5m,train-CV,5-fold CV AUC,auc,0.536,25905,WEAK,decile spread 0.438->0.566 but favored side ask already 52-53c; taker EV only +0.5-2.4c; maker fill adversely selected
 MAIN-3,B,unconditional pre-open Up-bias,5m+15m,train,mean mid@-5 vs P(up),bias_c,0.1,44929,DEAD,mid 0.5025 vs P(up) 0.5038 - no fadeable bias
+MAIN-4,C,favorite harvest maker join-bid at +60s when fav mid in [.80..93],5m,train,tape backtest qm=2,EV_c_per_share,3.17,1702,PROMISING,90% fill; 18.9 tr/day; positive all 4 months (2.1-5.5c); taker variant +1.81c
+MAIN-5,C3,naive late-window favorite taker buy (T-15..T-5; ask .85-.97),5m,train,analytic ask+fee,EV_c_per_share,-1.0,5616,DEAD,late ask efficiently priced; needs information gate
+MAIN-6,E2,binance-informed T-5s snipe (fv_lag>=.995; ask<=.97),5m,train,analytic lookahead-free,EV_c_per_share,3.27,3739,PROMISING,40.6 tr/day win .73 avg cost .69; +6c version had 1s lookahead - removed
+MAIN-7,F1/F2,streak fade/follow,5m,train,pre-open mid vs outcome by prev_streak,gap_c,0.5,26000,DEAD,crowd tilts contrarian after streaks and is RIGHT (BTC 5m mean-reverts; priced correctly)
+MAIN-8,D,1h late favorite harvest (first touch f .85-.95 off 30-55min),1h,train,per-window first-touch,bias_c_at_mid,1.30,4608,WEAK,unstable by month (0.0-2.8c); spread 1c eats most; 5m version strictly better
+MAIN-9,D,1h slight-leader late (f .50-.55 off>=42min),1h,train,per-window,bias_c,varies,1478,DEAD,-3.7 to +5.1c by month = noise
+MAIN-10,G,1h post-close toll,1h,train-14d,tape dump volume,windows_per_day_ge10sh,5.7,82,WEAK,median 1k shares but only ~6 windows/day; prints at 0.99; small $ add-on to 5m toll
+MAIN-11,B3,pre-open scalp 51->55 (ML/flow/uncond side gates; settle or taker aborts),5m,train,tape backtest qm=2,EV_c_per_share,-0.3 to -3.1,23000,DEAD,adverse selection kills it at every gate; user live P&L = discretion or variance
+MAIN-12,D,4h favorite harvest (first-touch f .6-.9 mid-window),4h,train,per-window honest,bias_c,0.40,1183,DEAD,-2.6..+5.0c by month = no power no stability; map cells were pseudo-replicated
+MAIN-13,E1/E4,5m vs 15m lead-lag,5m+15m,train-7d,15s-grid mid-change xcorr,corr_at_lag0,0.395,40000,DEAD,contemporaneous only; zero at +/-15s; no exploitable lag at achievable resolution
+MAIN-14,F6,favorite harvest by time-of-day,5m,train,bias by 4h utc block,bias_c_range,1.8-4.6,1883,PROMISING,positive in all blocks; no hour filter needed
+MAIN-15,A1/A2/A5,naive+recalibrated model vs market,5m,train,Brier + (t;p) map,brier_model_vs_mkt,0.200_vs_0.176,1374479,MERGED,market better calibrated than model; tradeable residue = favorite-longshot bias (S1) + terminal info lag (S2)
+MAIN-16,B1,pre-open tilt fade/follow at executable prices,5m,train,ask-based taker EV,EV_c,-4.2 and -0.1,2867,DEAD,tilt is informed and fully priced; bucket-midpoint artifact debunked
+MAIN-17,B4,depth imbalance@-10 alone,5m,train,AUC,auc,0.497,25807,DEAD,no signal alone
+MAIN-18,C1,open staleness taker (big 5s binance move; buy aligned @+1),5m,train,analytic,EV_c,-1.47,2591,DEAD,ask at +1s already moved
+MAIN-19,F3,thin-book overshoot reversion,5m,train,move/revert by depth quintile,revert_diff,~0,5000,DEAD,thin and thick books revert identically
+MAIN-20,G2,volume tercile skip-rule for favorite harvest,5m,train,bias by volume tercile,bias_c,non-monotonic,1842,DEAD,+15/-10/+5 pattern = noise; no stable skip rule
