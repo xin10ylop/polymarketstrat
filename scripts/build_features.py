@@ -82,31 +82,20 @@ def extract_day(args):
 
 def load_1h_day(kind, day):
     # windows opening on `day` have pre-open events on day-1 and settle-zone
-    # events on day+1, stored under those event-date directories
+    # events on day+1, stored under those event-date files
     d = pd.Timestamp(day)
     days = [(d + pd.Timedelta(days=k)).strftime("%Y-%m-%d") for k in (-1, 0, 1)]
-    files = []
-    for dd in days:
-        files += glob.glob(os.path.join(DATA, "tlx", "1h", kind, dd, "*.parquet"))
-    if not files:
-        return None
     dfs = []
-    for f in files:
-        df = pd.read_parquet(f)
-        dfs.append(df)
+    for dd in days:
+        p = os.path.join(DATA, "daily", "1h", kind, f"{dd}.parquet")
+        if os.path.exists(p):
+            dfs.append(pd.read_parquet(p))
+    if not dfs:
+        return None
     df = pd.concat(dfs, ignore_index=True)
-    wmap = _WMAP_1H
-    df["wts"] = df.slug.map(wmap)
-    df = df.dropna(subset=["wts"])
-    df["wts"] = df.wts.astype("int64")
     if kind == "quotes":
-        for c in ["bid_price", "bid_size", "ask_price", "ask_size"]:
-            df[c] = pd.to_numeric(df[c], errors="coerce").astype("float32")
         return df[["timestamp_us", "wts", "bid_price", "bid_size", "ask_price", "ask_size"]]
-    else:
-        df["price"] = pd.to_numeric(df.price, errors="coerce").astype("float32")
-        df["size"] = pd.to_numeric(df["size"], errors="coerce").astype("float32")
-        return df[["timestamp_us", "wts", "price", "size", "side"]]
+    return df[["timestamp_us", "wts", "price", "size", "side"]]
 
 
 def _snapshots(q, wts_arr, T):
@@ -196,7 +185,8 @@ def main(family):
     w = w[w.family == family]
     if family == "1h":
         _WMAP_1H = dict(zip(w.slug, w.wts))
-        days = sorted(os.listdir(os.path.join(DATA, "tlx", "1h", "quotes")))
+        days = sorted(f[:-8] for f in os.listdir(os.path.join(DATA, "daily", "1h", "quotes"))
+                      if f.endswith(".parquet"))
     else:
         days = sorted(f[:-8] for f in os.listdir(os.path.join(DATA, "daily", family, "quotes"))
                       if f.endswith(".parquet"))

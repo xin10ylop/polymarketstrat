@@ -1,0 +1,4 @@
+id,area,hypothesis,family,period,method,metric,value,n,verdict,notes
+MAIN-1,G,post-close winner-dump toll (maker bid 0.99+ on determined winner),5m,train-sample-7d,tape count of sell-aggressor prints <=0.995 on winner in (T+1s;settle],windows/day with >=10sh,265,1857,PROMISING,median 4k shares dumped per window; 0.5-1c/share riskless; needs queue realism + live chainlink read
+MAIN-2,G4,ML pre-open side classifier (LGBM 29 features),5m,train-CV,5-fold CV AUC,auc,0.536,25905,WEAK,decile spread 0.438->0.566 but favored side ask already 52-53c; taker EV only +0.5-2.4c; maker fill adversely selected
+MAIN-3,B,unconditional pre-open Up-bias,5m+15m,train,mean mid@-5 vs P(up),bias_c,0.1,44929,DEAD,mid 0.5025 vs P(up) 0.5038 - no fadeable bias
