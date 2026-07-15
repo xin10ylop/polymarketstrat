@@ -1,0 +1,20 @@
+[Unit]
+Description=Polymarket paper bot - SNIPE only
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/polymarketstrat
+Environment=BOT_MODE=paper
+Environment=SPOT_FEED=coinbase
+Environment=TOLL_ENABLED=0
+Environment=BOT_DATA_DIR=/opt/polymarketstrat/bot/data/snipe
+Environment=LOG_LEVEL=INFO
+ExecStart=/opt/polymarketstrat/venv/bin/python -m bot.main
+Restart=always
+RestartSec=5
+MemoryMax=1G
+
+[Install]
+WantedBy=multi-user.target
