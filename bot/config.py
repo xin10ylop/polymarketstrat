@@ -45,7 +45,7 @@ class Config:
     maker_fee_mult: float = _env("MAKER_FEE_MULT", 0.0, float)
 
     # --- toll strategy (S3): post-close bid on the determined winner ---
-    toll_enabled: bool = True
+    toll_enabled: bool = _env("TOLL_ENABLED", "1") == "1"
     toll_place_delay_s: float = 2.0        # place at T+2s after window close
     toll_cancel_after_s: float = 22.0      # cancel at T+22s (settlement ~T+23s)
     toll_price_fine: float = 0.992         # when 0.001 tick regime is active
@@ -59,7 +59,7 @@ class Config:
     toll_controller_alpha: float = 0.2     # EMA step per window
 
     # --- snipe strategy (S2): basis-corrected terminal taker ---
-    snipe_enabled: bool = True
+    snipe_enabled: bool = _env("SNIPE_ENABLED", "1") == "1"
     snipe_eval_from_s: float = -6.0        # start evaluating at T-6s
     snipe_signal_lag_s: float = 1.0        # act on spot data at least 1s old (validated latency)
     snipe_fv_min: float = 0.995
