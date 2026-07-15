@@ -42,14 +42,21 @@ class Oracle:
     # ------------------------------------------------------------------
     async def run(self):
         backoff = 1
+        # filters MUST be compact JSON: the server routes updates by exact
+        # string match, and '{"symbol": "btc/usd"}' (spacey) gets backfill
+        # but zero updates — a silent, open, dead subscription
         sub = {"action": "subscribe", "subscriptions": [{
             "topic": "crypto_prices_chainlink", "type": "update",
-            "filters": json.dumps({"symbol": self.cfg.pm_price_symbol}),
+            "filters": json.dumps({"symbol": self.cfg.pm_price_symbol},
+                                  separators=(",", ":")),
         }]}
         while True:
             try:
                 async with aiohttp.ClientSession(trust_env=True) as s:
-                    async with s.ws_connect(self.cfg.pm_live_ws, heartbeat=15) as ws:
+                    # receive_timeout: a connection that stops delivering frames
+                    # (even if TCP-alive) is torn down and resubscribed
+                    async with s.ws_connect(self.cfg.pm_live_ws, heartbeat=15,
+                                            receive_timeout=10) as ws:
                         await ws.send_json(sub)
                         log.info("oracle feed connected (%s %s)",
                                  self.cfg.pm_live_ws, self.cfg.pm_price_symbol)
@@ -74,6 +81,9 @@ class Oracle:
         rows = p.get("data") if isinstance(p.get("data"), list) else [p]
         n = 0
         for r in rows:
+            sym = r.get("symbol")
+            if sym is not None and sym != self.cfg.pm_price_symbol:
+                continue          # defense in depth if server-side filtering breaks
             ts_ms, val = r.get("timestamp"), r.get("value")
             if ts_ms is None or val is None:
                 continue
