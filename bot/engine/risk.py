@@ -46,10 +46,13 @@ class RiskManager:
         pnl = self.ledger.realized_pnl_today()
         if pnl < -self.cfg.max_daily_loss:
             self.halt("all", f"daily loss {pnl:.2f} < -{self.cfg.max_daily_loss}")
-        wr, n = self.ledger.snipe_trailing(self.cfg.snipe_trailing_n)
-        if wr is not None and n >= self.cfg.snipe_trailing_n and wr < self.cfg.snipe_min_winrate:
-            self.halt("snipe", f"trailing winrate {wr:.2f} over {n}")
+        tp, n = self.ledger.snipe_trailing_pnl(self.cfg.snipe_trailing_n)
+        if n >= self.cfg.snipe_trailing_n and tp < self.cfg.snipe_trailing_pnl_min:
+            self.halt("snipe", f"trailing {n}-fill pnl {tp:.2f} < "
+                      f"{self.cfg.snipe_trailing_pnl_min}")
         if self.ledger.mismatches() > 0:
             self.halt("toll", "oracle/exchange winner mismatch detected")
-        # oracle staleness is checked at decision time by the strategies; a long
-        # outage only skips windows there (transient RPC blips recover)
+        if self.ledger.unmarked_old_fills() > self.cfg.max_unmarked_fills:
+            self.halt("all", "settlement reconciler falling behind "
+                      f"({self.ledger.unmarked_old_fills()} unmarked fills)")
+        # oracle staleness is checked at decision time by the strategies

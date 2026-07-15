@@ -32,18 +32,24 @@ class SpotFeed:
     # -- public estimators -------------------------------------------------
     def close_at(self, second):
         """1s close at or before `second` (None if unknown)."""
-        for s, c in reversed(self.bars):
+        for s, c, _real in reversed(self.bars):
             if s <= second:
                 return c
         return None
 
     def vol(self):
-        """Std of 1s log returns over the trailing window (per sqrt-second)."""
-        closes = [c for _, c in self.bars][-self.cfg.vol_window_s:]
-        if len(closes) < 60:
-            return None
-        rets = [math.log(closes[i] / closes[i - 1]) for i in range(1, len(closes))
-                if closes[i - 1] > 0]
+        """Std of 1s log returns over trailing real (non-gap-filled) bars.
+
+        Synthetic flat bars would inject zero returns and understate vol,
+        inflating the snipe's confidence exactly when the tape is thin.
+        """
+        bars = list(self.bars)[-self.cfg.vol_window_s:]
+        rets = []
+        for i in range(1, len(bars)):
+            s0, c0, r0 = bars[i - 1]
+            s1, c1, r1 = bars[i]
+            if r0 and r1 and s1 == s0 + 1 and c0 > 0:
+                rets.append(math.log(c1 / c0))
         if len(rets) < 30:
             return None
         return statistics.pstdev(rets)
@@ -65,10 +71,10 @@ class SpotFeed:
         if self._cur_sec is None:
             self._cur_sec, self._cur_close = sec, price
         elif sec > self._cur_sec:
-            self.bars.append((self._cur_sec, self._cur_close))
-            # fill gaps so vol/back-sampling sees a contiguous grid
+            self.bars.append((self._cur_sec, self._cur_close, True))
+            # gap-filled bars are flagged synthetic and excluded from vol
             for missing in range(self._cur_sec + 1, min(sec, self._cur_sec + 30)):
-                self.bars.append((missing, self._cur_close))
+                self.bars.append((missing, self._cur_close, False))
             self._cur_sec, self._cur_close = sec, price
         else:
             self._cur_close = price

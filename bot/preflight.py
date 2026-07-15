@@ -56,25 +56,31 @@ async def main():
                 results.append((got, "coinbase matches feed"))
         except Exception as e:  # noqa: BLE001
             results.append((False, f"coinbase: {e}"))
-        # chainlink RPC
-        got_rpc = False
-        for url in CFG.polygon_rpcs:
-            try:
-                body = {"jsonrpc": "2.0", "id": 1, "method": "eth_call",
-                        "params": [{"to": CFG.chainlink_btc_usd, "data": "0xfeaf968c"},
-                                   "latest"]}
-                async with s.post(url, json=body,
-                                  timeout=aiohttp.ClientTimeout(total=5)) as r:
-                    res = await r.json()
-                px = int(res["result"][2:][64:128], 16) / 1e8
-                results.append((px > 1000, f"chainlink via {url}: BTC/USD={px:.2f}"))
-                got_rpc = True
-                break
-            except Exception:  # noqa: BLE001
-                continue
-        if not got_rpc:
-            results.append((False, "chainlink: ALL polygon RPCs unreachable "
-                            "(bot would need ORACLE_SPOT_FALLBACK=1 -> degraded)"))
+        # resolution feed: Polymarket's chainlink data-stream ws
+        try:
+            sub = {"action": "subscribe", "subscriptions": [{
+                "topic": "crypto_prices_chainlink", "type": "update",
+                "filters": json.dumps({"symbol": CFG.pm_price_symbol})}]}
+            async with s.ws_connect(CFG.pm_live_ws, heartbeat=10) as ws:
+                await ws.send_json(sub)
+                got = None
+                for _ in range(6):
+                    msg = await asyncio.wait_for(ws.receive(), timeout=10)
+                    if msg.type != aiohttp.WSMsgType.TEXT or not msg.data:
+                        continue
+                    d = json.loads(msg.data)
+                    p = d.get("payload") or {}
+                    rows = p.get("data") if isinstance(p.get("data"), list) else [p]
+                    for r0 in rows:
+                        if r0.get("value"):
+                            got = float(r0["value"])
+                            break
+                    if got:
+                        break
+                results.append((bool(got and got > 1000),
+                                f"resolution feed (chainlink data stream): BTC/USD={got}"))
+        except Exception as e:  # noqa: BLE001
+            results.append((False, f"resolution feed ws: {e}"))
     ok = True
     for good, label in results:
         print((OK if good else BAD), label)

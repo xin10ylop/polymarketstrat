@@ -27,16 +27,11 @@ class Config:
     coinbase_ws: str = "wss://ws-feed.exchange.coinbase.com"
     binance_ws: str = "wss://stream.binance.com:9443/ws/btcusdt@aggTrade"
     spot_feed: str = _env("SPOT_FEED", "coinbase")   # coinbase | binance (binance is US-geoblocked)
-    polygon_rpcs: tuple = (
-        "https://polygon-rpc.com",
-        "https://polygon-bor-rpc.publicnode.com",
-        "https://polygon.drpc.org",
-        "https://1rpc.io/matic",
-    )
-    chainlink_btc_usd: str = "0xc907E116054Ad103354f2D350FD2514433D57F6f"  # Polygon aggregator proxy
-    oracle_poll_ms: int = 300
-    # sandbox/dev fallback when no RPC is reachable: use spot feed as pseudo-oracle (DEGRADED)
-    oracle_allow_spot_fallback: bool = _env("ORACLE_SPOT_FALLBACK", "0") == "1"
+    # Resolution feed: Polymarket's published Chainlink BTC/USD data stream —
+    # the exact feed named in each market's resolutionSource. NEVER the on-chain
+    # Polygon aggregator (33s rounds -> ~8.6% miscalled windows historically).
+    pm_live_ws: str = "wss://ws-live-data.polymarket.com"
+    pm_price_symbol: str = "btc/usd"
 
     # --- fees (verified May-Jul 2026: taker 0.07*p*(1-p), maker 0). CLOB metadata
     # now shows base_fee=1000 for both sides; until a real fill proves otherwise we
@@ -48,6 +43,12 @@ class Config:
     toll_enabled: bool = _env("TOLL_ENABLED", "1") == "1"
     toll_place_delay_s: float = 2.0        # place at T+2s after window close
     toll_cancel_after_s: float = 22.0      # cancel at T+22s (settlement ~T+23s)
+    toll_boundary_wait_s: float = 2.0      # extra wait for the close sample to arrive
+    # skip windows decided by less than this: exact-boundary sampling was
+    # historically 100.000% correct even at $0, but tiny-margin windows carry
+    # all of the residual feed-hiccup risk for ~0.8c of upside
+    toll_min_margin_usd: float = _env("TOLL_MIN_MARGIN_USD", 10.0, float)
+    toll_max_window_loss: float = _env("TOLL_MAX_WINDOW_LOSS", 250.0, float)  # $ cap per window
     toll_price_fine: float = 0.992         # when 0.001 tick regime is active
     toll_price_coarse: float = 0.99        # when tick regime is 0.01
     toll_min_clip: int = 50                # shares
@@ -69,13 +70,15 @@ class Config:
     snipe_vol_floor: float = 1e-6
     basis_window_s: int = 60               # rolling median window for oracle/spot basis
     vol_window_s: int = 300                # realized vol estimator window
+    book_max_age_s: float = 3.0            # never trust a book older than this
 
     # --- risk / kill-switches ---
     max_daily_loss: float = _env("MAX_DAILY_LOSS", 25.0, float)   # $ paper, halt for the day
-    snipe_trailing_n: int = 50
-    snipe_min_winrate: float = 0.60
-    oracle_max_staleness_s: float = 3.0    # halt toll if oracle read older than this at close
-    feed_max_silence_s: float = 10.0       # halt if spot feed silent this long
+    snipe_trailing_n: int = 30             # settled fills in the trailing window
+    snipe_trailing_pnl_min: float = -8.0   # halt snipe if trailing-N pnl below this ($)
+    max_unmarked_fills: int = 5            # halt if this many old fills lack settlement
+    oracle_max_staleness_s: float = 5.0    # oracle feed silence -> degraded, no trading
+    feed_max_silence_s: float = 10.0       # spot feed silence pauses the snipe
 
     # --- ops ---
     data_dir: str = _env("BOT_DATA_DIR", os.path.join(os.path.dirname(__file__), "data"))

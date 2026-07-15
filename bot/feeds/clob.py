@@ -2,11 +2,16 @@
 
 Discovery: gamma API by deterministic slug (btc-updown-5m-<wts>) for the next
 few windows. Subscription: one ws connection carrying every active/upcoming
-token; when the desired set changes we open a replacement connection before
-closing the old one (the market channel takes its asset list at subscribe time).
+token; when the desired set changes we open a replacement connection.
 
-Tracks per token: top-of-book, current tick size (incl. tick_size_change
-events), and a rolling tape of prints for the paper fill engine.
+Book state is a full price ladder per token (dict price->size), seeded from
+`book` snapshots and updated by absolute-size `price_change` deltas, so best
+bid/ask can move in BOTH directions and cancelled levels disappear. On every
+reconnect the books are resynced via REST — websocket gaps can otherwise leave
+stale tops that fake paper liquidity.
+
+Prints carry a monotonically increasing per-token sequence number so fill
+cursors survive deque eviction.
 """
 import asyncio
 import json
@@ -29,18 +34,37 @@ class Market:
     token_down: str
     tick: float = 0.01
     min_size: float = 5.0
-    outcome_prices: tuple = None      # set post-resolution by the reconciler
 
 
 @dataclass
 class TokenState:
-    best_bid: float = None
-    best_bid_size: float = 0.0
-    best_ask: float = None
-    best_ask_size: float = 0.0
+    bids: dict = field(default_factory=dict)      # price -> size
+    asks: dict = field(default_factory=dict)
     tick: float = 0.01
-    prints: deque = field(default_factory=lambda: deque(maxlen=2000))  # (ts, px, sz, side)
+    prints: deque = field(default_factory=lambda: deque(maxlen=4000))  # (seq, ts, px, sz, side)
+    print_seq: int = 0
     last_book_ts: float = 0.0
+
+    @property
+    def best_bid(self):
+        return max(self.bids) if self.bids else None
+
+    @property
+    def best_ask(self):
+        return min(self.asks) if self.asks else None
+
+    @property
+    def best_bid_size(self):
+        b = self.best_bid
+        return self.bids.get(b, 0.0) if b is not None else 0.0
+
+    @property
+    def best_ask_size(self):
+        a = self.best_ask
+        return self.asks.get(a, 0.0) if a is not None else 0.0
+
+    def book_fresh(self, max_age):
+        return time.time() - self.last_book_ts <= max_age
 
 
 class ClobFeed:
@@ -50,7 +74,6 @@ class ClobFeed:
         self.tokens = {}                  # token_id -> TokenState
         self.token_owner = {}             # token_id -> (wts, 'up'|'down')
         self._session = None
-        self._ws = None
         self._subscribed = frozenset()
         self._want_resub = asyncio.Event()
 
@@ -86,19 +109,17 @@ class ClobFeed:
                         min_size=float(m.get("orderMinSize") or 5),
                         tick=float(m.get("orderPriceMinTickSize") or 0.01))
             self.markets[wts] = mk
-            for tid, side in [(mk.token_up, "up"), (mk.token_down, "down")]:
+            for tid in (mk.token_up, mk.token_down):
                 self.tokens[tid] = TokenState(tick=mk.tick)
-                self.token_owner[tid] = (wts, side)
+                self.token_owner[tid] = (wts, "up" if tid == mk.token_up else "down")
             log.info("discovered %s (cond %s...)", slug, mk.condition_id[:10])
             self._want_resub.set()
-        # drop markets older than 2 windows past settlement
         horizon = now - 3 * self.cfg.window_secs
         for wts in [w for w in self.markets if w < horizon]:
             mk = self.markets.pop(wts)
-            self.tokens.pop(mk.token_up, None)
-            self.tokens.pop(mk.token_down, None)
-            self.token_owner.pop(mk.token_up, None)
-            self.token_owner.pop(mk.token_down, None)
+            for tid in (mk.token_up, mk.token_down):
+                self.tokens.pop(tid, None)
+                self.token_owner.pop(tid, None)
             self._want_resub.set()
 
     # ---------------- websocket ----------------
@@ -118,12 +139,34 @@ class ClobFeed:
         finally:
             await self._session.close()
 
+    async def _resync_books(self, assets):
+        """REST snapshot of every subscribed book (heals ws-gap staleness)."""
+        for tid in assets:
+            st = self.tokens.get(tid)
+            if st is None:
+                continue
+            try:
+                async with self._session.get(
+                        f"{self.cfg.clob_url}/book?token_id={tid}",
+                        timeout=aiohttp.ClientTimeout(total=8)) as r:
+                    book = await r.json()
+                self._apply_snapshot(st, book.get("bids") or [], book.get("asks") or [])
+            except Exception as e:  # noqa: BLE001
+                log.debug("book resync failed %s: %s", tid[:12], e)
+
+    @staticmethod
+    def _apply_snapshot(st, bids, asks):
+        st.bids = {float(x["price"]): float(x["size"]) for x in bids if float(x["size"]) > 0}
+        st.asks = {float(x["price"]): float(x["size"]) for x in asks if float(x["size"]) > 0}
+        st.last_book_ts = time.time()
+
     async def _run_ws(self, assets):
         async with self._session.ws_connect(self.cfg.clob_ws, heartbeat=10) as ws:
             await ws.send_json({"type": "market", "assets_ids": list(assets)})
             self._subscribed = assets
             self._want_resub.clear()
             log.info("clob ws subscribed to %d tokens", len(assets))
+            await self._resync_books(assets)
             recv = asyncio.ensure_future(ws.receive())
             resub = asyncio.ensure_future(self._want_resub.wait())
             pinger = asyncio.ensure_future(self._pinger(ws))
@@ -131,21 +174,23 @@ class ClobFeed:
                 while True:
                     done, _ = await asyncio.wait({recv, resub},
                                                  return_when=asyncio.FIRST_COMPLETED)
-                    if resub in done:
-                        if frozenset(self.tokens.keys()) != self._subscribed:
-                            return  # exit; outer loop reconnects with new set
-                        self._want_resub.clear()
-                        resub = asyncio.ensure_future(self._want_resub.wait())
-                    if recv in done:
+                    if recv in done:                     # always drain recv first
                         msg = recv.result()
                         if msg.type in (aiohttp.WSMsgType.PING, aiohttp.WSMsgType.PONG):
                             pass
+                        elif msg.type == aiohttp.WSMsgType.CLOSE:
+                            raise RuntimeError(f"server close (code={msg.data})")
                         elif msg.type == aiohttp.WSMsgType.TEXT:
-                            if msg.data != "PONG":
+                            if msg.data and msg.data != "PONG":
                                 self._handle(msg.data)
                         else:
                             raise RuntimeError(f"ws closed ({msg.type})")
                         recv = asyncio.ensure_future(ws.receive())
+                    if resub in done:
+                        if frozenset(self.tokens.keys()) != self._subscribed:
+                            return                       # reconnect with new set
+                        self._want_resub.clear()
+                        resub = asyncio.ensure_future(self._want_resub.wait())
             finally:
                 recv.cancel()
                 resub.cancel()
@@ -153,13 +198,15 @@ class ClobFeed:
 
     @staticmethod
     async def _pinger(ws):
-        # the CLOB server drops connections without an application-level ping
         while True:
-            await asyncio.sleep(9)
+            await asyncio.sleep(5)
             await ws.send_str("PING")
 
     def _handle(self, raw):
-        data = json.loads(raw)
+        try:
+            data = json.loads(raw)
+        except ValueError:
+            return
         events = data if isinstance(data, list) else [data]
         now = time.time()
         for ev in events:
@@ -169,19 +216,7 @@ class ClobFeed:
             if st is None:
                 continue
             if et == "book":
-                bids = ev.get("bids") or []
-                asks = ev.get("asks") or []
-                if bids:
-                    top = max(bids, key=lambda x: float(x["price"]))
-                    st.best_bid, st.best_bid_size = float(top["price"]), float(top["size"])
-                else:
-                    st.best_bid, st.best_bid_size = None, 0.0
-                if asks:
-                    top = min(asks, key=lambda x: float(x["price"]))
-                    st.best_ask, st.best_ask_size = float(top["price"]), float(top["size"])
-                else:
-                    st.best_ask, st.best_ask_size = None, 0.0
-                st.last_book_ts = now
+                self._apply_snapshot(st, ev.get("bids") or [], ev.get("asks") or [])
             elif et == "price_change":
                 for ch in ev.get("changes", [ev]):
                     try:
@@ -189,34 +224,35 @@ class ClobFeed:
                     except (KeyError, TypeError, ValueError):
                         continue
                     side = (ch.get("side") or "").upper()
-                    if side == "BUY":
-                        if st.best_bid is None or px >= st.best_bid:
-                            st.best_bid = px if sz > 0 else st.best_bid
-                            if px == st.best_bid:
-                                st.best_bid_size = sz
-                    elif side == "SELL":
-                        if st.best_ask is None or px <= st.best_ask:
-                            st.best_ask = px if sz > 0 else st.best_ask
-                            if px == st.best_ask:
-                                st.best_ask_size = sz
+                    ladder = st.bids if side == "BUY" else st.asks if side == "SELL" else None
+                    if ladder is None:
+                        continue
+                    if sz > 0:
+                        ladder[px] = sz
+                    else:
+                        ladder.pop(px, None)
                 st.last_book_ts = now
             elif et == "tick_size_change":
                 try:
-                    st.tick = float(ev.get("new_tick_size"))
-                    wts, _ = self.token_owner.get(tid, (None, None))
-                    if wts in self.markets:
-                        self.markets[wts].tick = st.tick
-                    log.info("tick change %s -> %s", tid[:16], st.tick)
+                    new_tick = float(ev.get("new_tick_size"))
                 except (TypeError, ValueError):
-                    pass
+                    continue
+                wts, _side = self.token_owner.get(tid, (None, None))
+                mk = self.markets.get(wts)
+                if mk:
+                    mk.tick = new_tick
+                    for t2 in (mk.token_up, mk.token_down):   # both tokens share the regime
+                        if t2 in self.tokens:
+                            self.tokens[t2].tick = new_tick
+                log.info("tick change w%s -> %s", wts, new_tick)
             elif et in ("last_trade_price", "trade"):
                 try:
                     px = float(ev.get("price"))
                     sz = float(ev.get("size") or 0)
                 except (TypeError, ValueError):
                     continue
-                side = (ev.get("side") or "").upper()
-                st.prints.append((now, px, sz, side))
+                st.print_seq += 1
+                st.prints.append((st.print_seq, now, px, sz, (ev.get("side") or "").upper()))
 
     # ---------------- helpers ----------------
     def market_for(self, wts):
@@ -226,7 +262,6 @@ class ClobFeed:
         return self.tokens.get(token_id)
 
     async def fetch_outcome(self, mk: Market):
-        """Post-settlement truth from gamma (for the paper ledger reconciler)."""
         url = f"{self.cfg.gamma_url}/markets?slug={mk.slug}"
         for extra in ("", "&closed=true"):
             try:
@@ -239,8 +274,7 @@ class ClobFeed:
                     if prices and float(max(prices, key=float)) == 1.0:
                         outcomes = arr[0].get("outcomes")
                         outcomes = json.loads(outcomes) if isinstance(outcomes, str) else outcomes
-                        winner = outcomes[[float(p) for p in prices].index(1.0)]
-                        return winner.lower()          # 'up' | 'down'
+                        return outcomes[[float(p) for p in prices].index(1.0)].lower()
             except Exception as e:  # noqa: BLE001
                 log.debug("outcome fetch failed %s: %s", mk.slug, e)
         return None

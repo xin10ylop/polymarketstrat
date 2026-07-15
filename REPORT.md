@@ -119,8 +119,11 @@ Known data caveats: trade tapes for 2026-05-13 (Telonex's own outage day) and 20
 excluding those days moves no OOS number by more than 0.1c.
 
 ## Execution playbook (for the survivors)
-- One process, three websockets: Chainlink BTC/USD (poll the same aggregator Polymarket uses),
-  Binance BTCUSDT trade stream, Polymarket CLOB user/market channels.
+- One process, three websockets: the resolution feed = Polymarket's published Chainlink BTC/USD
+  **data stream** (`wss://ws-live-data.polymarket.com`, topic `crypto_prices_chainlink`, 1s grid —
+  bit-identical to the resolver; the on-chain Polygon aggregator updates only every ~33s and
+  miscalls ~8.6% of windows — never use it), a spot trade stream (Coinbase BTC-USD on US hosts,
+  Binance elsewhere), and the Polymarket CLOB user/market channels.
 - #1: at each window close, read the close print, post GTC bid 0.992 × 15 shares on the winner,
   cancel at settlement.
 - #2: maintain basis = rolling 60s median(chainlink/binance); from T−6s, recompute

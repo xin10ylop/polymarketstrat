@@ -13,7 +13,7 @@ ExecStart=/opt/polymarketstrat/venv/bin/python -m bot.main
 Restart=always
 RestartSec=5
 # hard memory lid; the bot uses ~100MB
-MemoryMax=1G
+MemoryMax=300M
 
 [Install]
 WantedBy=multi-user.target

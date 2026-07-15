@@ -51,22 +51,18 @@ class SnipeStrategy:
     def _evaluate(self, wts):
         T = self.cfg.window_secs
         mk = self.clob.market_for(wts)
-        if mk is None:
+        if mk is None or self.oracle.degraded:
             return False
-        k = self.oracle.price_at(wts)
+        # exact open print from the resolution feed (tolerate <=2s backfill lag)
+        k = self.oracle.price_at(wts, exact=True, tolerance=2)
         if k is None or k <= 0:
             return False
         sig_t = time.time() - self.cfg.snipe_signal_lag_s
         s_lag = self.spot.close_at(sig_t)
         vol = self.spot.vol()
         basis = self.spot.basis()
-        if s_lag is None or vol is None:
+        if s_lag is None or vol is None or basis is None:
             return False
-        if basis is None:
-            if self.oracle.degraded:
-                basis = 1.0          # pseudo-oracle == spot; basis is 1 by construction
-            else:
-                return False
         tau = wts + T - sig_t
         if tau <= 0:
             return False
@@ -78,7 +74,8 @@ class SnipeStrategy:
             return False
         token = mk.token_up if side == "up" else mk.token_down
         st = self.clob.state(token)
-        if (st is None or st.best_ask is None
+        if (st is None or not st.book_fresh(self.cfg.book_max_age_s)
+                or st.best_ask is None
                 or st.best_ask > self.cfg.snipe_ask_max
                 or st.best_ask_size < self.cfg.snipe_min_ask_size):
             return False
@@ -86,8 +83,7 @@ class SnipeStrategy:
         order = self.exec.take(wts, "snipe", token, self.cfg.snipe_ask_max, size)
         if order:
             log.info("w%s SNIPE %s fv=%.4f ask=%.3f x%.0f (S=%.2f K=%.2f basis=%.6f "
-                     "vol=%.2e tau=%.1f)%s", wts, side, fv, order.price, order.filled,
-                     s_adj, k, basis, vol, tau,
-                     " DEGRADED-ORACLE" if self.oracle.degraded else "")
+                     "vol=%.2e tau=%.1f)", wts, side, fv, order.price, order.filled,
+                     s_adj, k, basis, vol, tau)
             return True
         return False

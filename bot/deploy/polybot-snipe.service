@@ -2,6 +2,7 @@
 Description=Polymarket paper bot - SNIPE only
 After=network-online.target
 Wants=network-online.target
+Conflicts=polybot.service
 
 [Service]
 Type=simple
@@ -14,7 +15,7 @@ Environment=LOG_LEVEL=INFO
 ExecStart=/opt/polymarketstrat/venv/bin/python -m bot.main
 Restart=always
 RestartSec=5
-MemoryMax=1G
+MemoryMax=200M
 
 [Install]
 WantedBy=multi-user.target

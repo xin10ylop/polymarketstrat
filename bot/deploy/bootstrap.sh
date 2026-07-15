@@ -26,11 +26,12 @@ venv/bin/pip install -q aiohttp
 echo "--- preflight ---"
 venv/bin/python -m bot.preflight
 
-cp bot/deploy/polybot.service /etc/systemd/system/
+systemctl disable --now polybot 2>/dev/null || true   # never run the combined unit alongside the pair
+cp bot/deploy/polybot-toll.service bot/deploy/polybot-snipe.service /etc/systemd/system/
 systemctl daemon-reload
-systemctl enable --now polybot
+systemctl enable --now polybot-toll polybot-snipe
 sleep 5
-systemctl --no-pager status polybot | head -12
+systemctl --no-pager status polybot-toll polybot-snipe | grep -E "polybot|Active"
 echo
-echo "OK. Watch it:   journalctl -u polybot -f"
-echo "Daily report:   cd $DIR && venv/bin/python -m bot.report 7"
+echo "OK. Watch:      journalctl -u polybot-toll -f   (or polybot-snipe)"
+echo "Daily report:   cd $DIR && BOT_DATA_DIR=bot/data/toll venv/bin/python -m bot.report 7"

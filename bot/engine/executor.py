@@ -3,14 +3,14 @@ between paper and live.
 
 PaperExecutor simulates fills against the LIVE tape and book:
   - maker limits fill from real prints that trade at-or-through our price after
-    placement time; prints strictly through the price count fully, prints at the
-    price count via `queue_share` (we join behind the existing queue). Partial
-    fills are supported, exactly like the real CLOB.
-  - takes execute against the live standing top-of-book, capped by its size.
+    placement; through-price prints count fully, at-price prints via
+    `queue_share`. Each print's size is a shared pool allocated across open
+    orders in placement order — two orders can never double-spend one print.
+  - takes execute against the live ladder top (freshness-gated) and decrement
+    the simulated book so back-to-back takes can't reuse the same liquidity.
 
-LiveExecutor holds the py-clob-client wiring for the real-money phase. It
-refuses to start without credentials and is intentionally NOT enabled by
-default anywhere.
+LiveExecutor holds the py-clob-client wiring for the real-money phase; it
+fails closed until deliberately enabled.
 """
 import itertools
 import logging
@@ -27,31 +27,32 @@ class Order:
     wts: int
     strategy: str
     token: str
-    side: str            # 'buy' (all current strategies buy)
+    side: str
     price: float
     size: float
     placed_ts: float
-    status: str = "open"          # open | cancelled | done
+    status: str = "open"
     filled: float = 0.0
     fees: float = 0.0
-    fills: list = field(default_factory=list)   # (ts, px, sz, fee, is_maker)
-    _tape_cursor: int = 0
+    fills: list = field(default_factory=list)
+    last_seq: int = 0                 # print sequence cursor (survives eviction)
 
 
 class PaperExecutor:
-    """Simulates fills from live market data. Interface: place_limit / take / cancel / poll."""
-
     def __init__(self, cfg, clob, ledger, queue_share=0.5):
         self.cfg = cfg
         self.clob = clob
         self.ledger = ledger
         self.queue_share = queue_share
         self.open_orders = {}
+        self._pool = {}               # (token, seq) -> remaining unallocated size
 
     # ---- interface ----
     def place_limit(self, wts, strategy, token, price, size):
+        st = self.clob.state(token)
         o = Order(id=next(_ids), wts=wts, strategy=strategy, token=token, side="buy",
-                  price=round(price, 3), size=size, placed_ts=time.time())
+                  price=round(price, 3), size=size, placed_ts=time.time(),
+                  last_seq=st.print_seq if st else 0)   # only future prints count
         self.open_orders[o.id] = o
         self.ledger.record_order(o, mode="paper-limit")
         log.info("[paper] LIMIT buy %s %.0f @ %.3f (%s w%s)", token[:12], size, price,
@@ -60,10 +61,15 @@ class PaperExecutor:
 
     def take(self, wts, strategy, token, price_limit, size):
         st = self.clob.state(token)
-        if not st or st.best_ask is None or st.best_ask > price_limit or st.best_ask_size <= 0:
+        if (st is None or not st.book_fresh(self.cfg.book_max_age_s)
+                or st.best_ask is None or st.best_ask > price_limit
+                or st.best_ask_size <= 0):
             return None
-        fill_sz = min(size, st.best_ask_size)
         px = st.best_ask
+        fill_sz = min(size, st.best_ask_size)
+        st.asks[px] = st.asks.get(px, 0.0) - fill_sz     # consume simulated liquidity
+        if st.asks.get(px, 0.0) <= 0:
+            st.asks.pop(px, None)
         fee = self.cfg.taker_fee_mult * px * (1 - px) * fill_sz
         o = Order(id=next(_ids), wts=wts, strategy=strategy, token=token, side="buy",
                   price=px, size=fill_sz, placed_ts=time.time(), status="done",
@@ -81,37 +87,45 @@ class PaperExecutor:
             o.status = "cancelled" if o.filled == 0 else "done"
             self.ledger.close_order(o)
 
-    # ---- fill engine: call frequently (strategy ticks / main loop) ----
+    # ---- fill engine ----
     def poll_fills(self):
-        for o in list(self.open_orders.values()):
+        # placement order => price/time priority among our own orders
+        orders = sorted(self.open_orders.values(), key=lambda o: o.placed_ts)
+        touched = False
+        for o in orders:
             st = self.clob.state(o.token)
             if st is None:
                 continue
-            tape = list(st.prints)
-            new = tape[o._tape_cursor:]
-            o._tape_cursor = len(tape)
-            for ts, px, sz, side in new:
-                if ts < o.placed_ts or o.filled >= o.size:
+            for seq, ts, px, sz, _side in st.prints:
+                if seq <= o.last_seq:
                     continue
-                if px > o.price + 1e-9:
+                o.last_seq = seq
+                if ts < o.placed_ts or o.filled >= o.size or px > o.price + 1e-9:
                     continue
-                # through-price prints are ours by price priority; at-price prints
-                # are shared with the pre-existing queue
                 share = 1.0 if px < o.price - 1e-9 else self.queue_share
-                take = min(sz * share, o.size - o.filled)
+                key = (o.token, seq)
+                pool = self._pool.get(key, sz * share)
+                take = min(pool, o.size - o.filled)
                 if take <= 0:
                     continue
+                self._pool[key] = pool - take
                 fee = self.cfg.maker_fee_mult * o.price * (1 - o.price) * take
                 o.filled += take
                 o.fees += fee
                 o.fills.append((ts, o.price, take, fee, True))
-                self.ledger.record_fill(o, ts, o.price, take, fee, maker=True)
+                self.ledger.record_fill(o, ts, o.price, take, fee, maker=True,
+                                        commit=False)
+                touched = True
                 log.info("[paper] maker fill %.1f/%.0f @ %.3f (%s w%s)", o.filled,
                          o.size, o.price, o.strategy, o.wts)
             if o.filled >= o.size:
                 o.status = "done"
                 self.open_orders.pop(o.id, None)
                 self.ledger.close_order(o)
+        if touched:
+            self.ledger.commit()
+        if len(self._pool) > 20000:      # prune allocation pool
+            self._pool = dict(list(self._pool.items())[-5000:])
 
 
 class LiveExecutor:

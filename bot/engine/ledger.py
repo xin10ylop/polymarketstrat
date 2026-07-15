@@ -31,7 +31,12 @@ class Ledger:
     def __init__(self, cfg):
         os.makedirs(cfg.data_dir, exist_ok=True)
         self.db = sqlite3.connect(os.path.join(cfg.data_dir, "paper.db"))
+        self.db.execute("PRAGMA journal_mode=WAL")
+        self.db.execute("PRAGMA synchronous=NORMAL")
         self.db.executescript(_SCHEMA)
+        self.db.commit()
+
+    def commit(self):
         self.db.commit()
 
     def record_order(self, o, mode):
@@ -41,14 +46,15 @@ class Ledger:
              o.size, mode, o.status, o.filled, o.fees))
         self.db.commit()
 
-    def record_fill(self, o, ts, px, sz, fee, maker):
+    def record_fill(self, o, ts, px, sz, fee, maker, commit=True):
         self.db.execute(
             "INSERT INTO fills(order_id,ts,wts,strategy,token,price,size,fee,maker) "
             "VALUES(?,?,?,?,?,?,?,?,?)",
             (o.id, ts, o.wts, o.strategy, o.token, px, sz, fee, int(maker)))
         self.db.execute("UPDATE orders SET filled=?, fees=?, status=? WHERE id=?",
                         (o.filled, o.fees, o.status, o.id))
-        self.db.commit()
+        if commit:
+            self.db.commit()
 
     def close_order(self, o):
         self.db.execute("UPDATE orders SET status=?, filled=?, fees=? WHERE id=?",
@@ -84,14 +90,16 @@ class Ledger:
                               (day0,)).fetchone()
         return row[0]
 
-    def snipe_trailing(self, n):
+    def snipe_trailing_pnl(self, n):
         rows = self.db.execute(
             "SELECT pnl FROM fills WHERE strategy LIKE 'snipe%' AND pnl IS NOT NULL "
             "ORDER BY ts DESC LIMIT ?", (n,)).fetchall()
-        if not rows:
-            return None, 0
-        wins = sum(1 for (p,) in rows if p > 0)
-        return wins / len(rows), len(rows)
+        return sum(p for (p,) in rows), len(rows)
+
+    def unmarked_old_fills(self, older_than_s=900):
+        return self.db.execute(
+            "SELECT COUNT(*) FROM fills WHERE pnl IS NULL AND ts < ?",
+            (time.time() - older_than_s,)).fetchone()[0]
 
     def mismatches(self):
         return self.db.execute(
