@@ -50,17 +50,19 @@ async def reconciler(cfg, clob, ledger, toll):
         await asyncio.sleep(10)
 
 
-async def status(cfg, ledger, oracle, spot, clob, toll):
+async def status(cfg, ledger, oracle, spot, clob, toll, snipe):
     while True:
         await asyncio.sleep(cfg.status_every_s)
         s = ledger.summary()
         log.info("STATUS pnl_today=%.2f oracle=%.2f(%s, %.1fs) spot=%.2f basis=%s "
-                 "markets=%d clip=%.0f fills=%s",
+                 "markets=%d clip=%.0f snipe[evals=%d nodata=%d near=%d sig=%d lastfv=%s] fills=%s",
                  ledger.realized_pnl_today(),
                  oracle.last_price or 0, "DEGRADED" if oracle.degraded else "ok",
                  oracle.staleness(), spot.last_price or 0,
                  f"{spot.basis():.6f}" if spot.basis() else "n/a",
-                 len(clob.markets), toll.clip, s)
+                 len(clob.markets), toll.clip,
+                 snipe.evals, snipe.no_data, snipe.near_misses, snipe.signals,
+                 f"{snipe.last_fv:.4f}" if snipe.last_fv is not None else "n/a", s)
 
 
 async def amain():
@@ -92,7 +94,7 @@ async def amain():
         asyncio.create_task(toll.run(), name="toll"),
         asyncio.create_task(snipe.run(), name="snipe"),
         asyncio.create_task(reconciler(CFG, clob, ledger, toll), name="reconciler"),
-        asyncio.create_task(status(CFG, ledger, oracle, spot, clob, toll), name="status"),
+        asyncio.create_task(status(CFG, ledger, oracle, spot, clob, toll, snipe), name="status"),
     ]
     stop = asyncio.Event()
     loop = asyncio.get_running_loop()

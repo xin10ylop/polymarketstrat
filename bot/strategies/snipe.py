@@ -25,6 +25,12 @@ class SnipeStrategy:
     def __init__(self, cfg, clob, oracle, spot, executor, ledger, risk):
         self.cfg, self.clob, self.oracle, self.spot = cfg, clob, oracle, spot
         self.exec, self.ledger, self.risk = executor, ledger, risk
+        # telemetry: proves "evaluated, no edge" vs "not evaluating at all"
+        self.evals = 0          # ticks where an fv was actually computed
+        self.no_data = 0        # ticks skipped for missing feed data
+        self.near_misses = 0    # fv extreme but no tradeable ask on that side
+        self.signals = 0        # takes attempted
+        self.last_fv = None
 
     async def run(self):
         T = self.cfg.window_secs
@@ -62,12 +68,15 @@ class SnipeStrategy:
         vol = self.spot.vol()
         basis = self.spot.basis()
         if s_lag is None or vol is None or basis is None:
+            self.no_data += 1
             return False
         tau = wts + T - sig_t
         if tau <= 0:
             return False
         s_adj = s_lag * basis
         fv = norm_cdf(math.log(s_adj / k) / (max(vol, self.cfg.snipe_vol_floor) * math.sqrt(tau)))
+        self.evals += 1
+        self.last_fv = fv
         side = "up" if fv >= self.cfg.snipe_fv_min else (
             "down" if fv <= 1 - self.cfg.snipe_fv_min else None)
         if side is None:
@@ -78,10 +87,12 @@ class SnipeStrategy:
                 or st.best_ask is None
                 or st.best_ask > self.cfg.snipe_ask_max
                 or st.best_ask_size < self.cfg.snipe_min_ask_size):
+            self.near_misses += 1
             return False
         size = min(st.best_ask_size, self.cfg.snipe_max_clip)
         order = self.exec.take(wts, "snipe", token, self.cfg.snipe_ask_max, size)
         if order:
+            self.signals += 1
             log.info("w%s SNIPE %s fv=%.4f ask=%.3f x%.0f (S=%.2f K=%.2f basis=%.6f "
                      "vol=%.2e tau=%.1f)", wts, side, fv, order.price, order.filled,
                      s_adj, k, basis, vol, tau)

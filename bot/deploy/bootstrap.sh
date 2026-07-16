@@ -26,7 +26,7 @@ venv/bin/pip install -q aiohttp
 echo "--- preflight ---"
 venv/bin/python -m bot.preflight
 
-systemctl disable --now polybot 2>/dev/null || true   # never run the combined unit alongside the pair
+# NOTE: do not touch polybot.service — that name belongs to a different project on this host
 cp bot/deploy/polybot-toll.service bot/deploy/polybot-snipe.service /etc/systemd/system/
 systemctl daemon-reload
 systemctl enable --now polybot-toll polybot-snipe
