@@ -34,6 +34,7 @@ class TollStrategy:
         self.pre_correct = 0
         self.pre_wrong = 0
         self.pre_marginal_cancel = 0
+        self.pre_guard_cancel = 0
 
     async def run(self):
         T = self.cfg.window_secs
@@ -54,6 +55,8 @@ class TollStrategy:
                         pre = await self._pre_evaluate(wts, lead, margin, sigma)
                     except Exception as e:  # noqa: BLE001
                         log.exception("toll pre-evaluate %s failed: %s", wts, e)
+            if pre is not None:
+                pre = await self._guard_pre_order(wts, close_ts, pre)
             await asyncio.sleep(max(0.0, close_ts - time.time()))
             if not self.cfg.toll_enabled or self.risk.halted("toll"):
                 if pre is not None:      # never leak a pre-order into a halt
@@ -121,7 +124,33 @@ class TollStrategy:
         self.pre_placed += 1
         log.info("w%s PRE-position %s @T-%.1fs (pred %+.2f >= thr %.2f) bid %.0f @ %.3f",
                  wts, predicted_winner, lead_s, predicted_delta, threshold, size, price)
-        return order, predicted_winner
+        return order, predicted_winner, k_open, threshold
+
+    async def _guard_pre_order(self, wts, close_ts, pre):
+        """Watch a live pre-order until close: the moment the predicted margin
+        decays below max(guard floor, half the entry threshold) — or the sign
+        flips, or the oracle goes dark — cancel. A wrong-side resting bid is
+        ~125x asymmetric, so this guard is what makes pre-positioning +EV."""
+        order, predicted_winner, k_open, threshold = pre
+        guard_thr = max(self.cfg.toll_pre_guard_floor, threshold / 2)
+        want_up = predicted_winner == "up"
+        while time.time() < close_ts:
+            self.exec.poll_fills()          # register pre-close fills as they land
+            cur = self.oracle.last_price
+            bad = (self.oracle.degraded or self.oracle.staleness() > 2.5
+                   or cur is None)
+            if not bad:
+                delta = cur - k_open
+                bad = (delta >= 0) != want_up or abs(delta) < guard_thr
+            if bad:
+                self.exec.cancel(order.id)
+                self.pre_guard_cancel += 1
+                log.warning("w%s pre-order GUARD cancel (delta=%s thr=%.0f filled=%.0f)",
+                            wts, f"{cur - k_open:+.2f}" if cur else "n/a",
+                            guard_thr, order.filled)
+                return None
+            await asyncio.sleep(0.2)
+        return pre
 
     async def _trade_window(self, wts, pre=None):
         T = self.cfg.window_secs
@@ -158,7 +187,7 @@ class TollStrategy:
         tick = mk.tick if mk else (st.tick if st else 0.01)
         price = self.cfg.toll_price_fine if tick <= 0.0011 else self.cfg.toll_price_coarse
 
-        pre_order, predicted_winner = pre if pre is not None else (None, None)
+        pre_order, predicted_winner = (pre[0], pre[1]) if pre is not None else (None, None)
         if pre_order is not None and predicted_winner == winner:
             self.pre_correct += 1
             order = pre_order

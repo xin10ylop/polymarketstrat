@@ -47,7 +47,21 @@ operational: reading the oracle print and posting within ~2s).
   T+2s: 226 fills/day (−2%); limit 0.99 → fewer fills, +1.0c; 0.992 maximizes $/day.
 - 15m OOS: 1,451 fills / 60 days = 24/day at the same +0.8c, but fill rate fell 36% → 26%
   (the 0.992 queue is getting crowded there). 1h adds ~6/day.
-- **Capacity**: ~$25–40/day at 15-share clips. Erosion risk: other bots joining the 0.992+ queue.
+- **UPDATE (Jul 17, order-book depth audit)** — the tape-only fill models above ignore standing
+  queue depth, and the queue is dominated by an institutional incumbent: a resting bid on the
+  winner's best tick that reaches a **median ~84,000 shares by close and ~900,000 by T+2s, in
+  ~100% of windows** (it already holds ~2k shares at T−10s, ~12k at T−2s). Under price-time
+  priority, a late order behind that wall fills ≈ nothing; per-share edge is unchanged but
+  realistic capture at 200-share clips is **~$3/day arriving at T+2s, ~$28/day at T+0.2s,
+  ~$80–210/day only via pre-close arrival (T−1.2s..T−10s)** — the strategy is a latency race
+  against one large competitor, not passive harvesting. Pre-positioning margins must be set
+  where wrong-side calls are ~never (a wrong resting bid loses ~125× the per-window gain):
+  validated ladder = T−10s@$80 / T−5s@$60 / T−3s@$60 / T−1.2s@$40 (zero wrong calls in 12,106
+  windows), plus a live margin-decay guard that cancels the pre-order the moment the predicted
+  edge shrinks. Wall-light windows (~6.7% overall) are ~1.5–2× more frequent on weekends.
+  The paper bot's fill engine now snapshots real queue depth at placement and fills only the
+  overflow, so paper P&L reflects this reality. 15m is 7–9× worse (wall/flow ratio ~1,400×) —
+  not worth pursuing.
 
 ### #2 — Oracle-lag terminal snipe (taker, last 5 seconds; basis-corrected)
 **Edge type**: information latency. **Family**: **5m only** (T−5s; the 15m version is dead — see below).
@@ -81,8 +95,13 @@ worst day −$0.11; 98% of days positive; max drawdown −6.8%)**. Standalone: t
 snipe 5m +$336, toll 15m +$59. The two strategies touch different seconds of the window's life
 and never compete for the same fill; they share one Chainlink + one Binance websocket and the
 CLOB API. At $5 clips the combined book never holds more than ~$30 at once, so a $100 bankroll
-runs it comfortably; scaling stakes 3× is within observed queue depth for the toll, less certain
-for the snipe.
+runs it comfortably.
+**UPDATE (Jul 17)**: the queue-depth audit above revises the live expectation. The snipe is
+unaffected (taker — no queue) and becomes the primary earner (~$55–70/day at 100–250-share
+takes); the toll is a smaller riskless trickle whose realistic range is ~$25–100/day depending
+on how much of the pre-close race the guarded ladder wins — measured honestly by the wall-aware
+paper model from here on. The tiny-size live calibration remains the only way to learn our true
+queue position (L2 data cannot show whether a fast order interleaves inside the wall).
 
 ## What was tested and ruled out (the full register: results/results_table.csv)
 

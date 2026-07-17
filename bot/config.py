@@ -54,11 +54,17 @@ class Config:
     toll_min_margin_usd: float = _env("TOLL_MIN_MARGIN_USD", 10.0, float)
     toll_max_window_loss: float = _env("TOLL_MAX_WINDOW_LOSS", 250.0, float)  # $ cap per window
     # --- toll Tier 2 (S3b): pre-position ahead of close for queue priority ---
-    # The competitor wall forms in the final ~1s before close; the only way to
-    # stand in front of it is to arrive earlier, which demands a bigger safety
-    # margin. Stages are tried in order: (lead_seconds, margin_floor_usd, sigma).
+    # The competitor wall forms EARLY (median ~2k shares resting by T-10s, ~12k
+    # by T-2s, ~84k at close): meaningful capture requires arriving ~10s out.
+    # A wrong-side resting bid loses ~size*0.99, ~125x the per-window gain, so
+    # margins are set where 12,106 historical windows produced ZERO wrong calls:
+    # stages tried in order as (lead_seconds, margin_floor_usd, sigma).
     toll_pre_position: bool = _env("TOLL_PREPOSITION", "0") == "1"
-    toll_pre_stages: tuple = ((5.0, 80.0, 8.0), (1.2, 40.0, 6.0))
+    toll_pre_stages: tuple = ((10.0, 80.0, 8.0), (5.0, 60.0, 7.0),
+                              (3.0, 60.0, 6.0), (1.2, 40.0, 6.0))
+    # guard: after pre-placing, cancel instantly if the predicted margin decays
+    # below max(this floor, half the entry threshold) or flips sign
+    toll_pre_guard_floor: float = 30.0
     toll_price_fine: float = 0.992         # when 0.001 tick regime is active
     toll_price_coarse: float = 0.99        # when tick regime is 0.01
     toll_min_clip: int = 50                # shares
