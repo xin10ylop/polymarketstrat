@@ -55,12 +55,15 @@ async def status(cfg, ledger, oracle, spot, clob, toll, snipe):
         await asyncio.sleep(cfg.status_every_s)
         s = ledger.summary()
         log.info("STATUS pnl_today=%.2f oracle=%.2f(%s, %.1fs) spot=%.2f basis=%s "
-                 "markets=%d clip=%.0f snipe[evals=%d nodata=%d near=%d sig=%d lastfv=%s] fills=%s",
+                 "markets=%d clip=%.0f pre[on=%d placed=%d ok=%d wrong=%d mcxl=%d] "
+                 "snipe[evals=%d nodata=%d near=%d sig=%d lastfv=%s] fills=%s",
                  ledger.realized_pnl_today(),
                  oracle.last_price or 0, "DEGRADED" if oracle.degraded else "ok",
                  oracle.staleness(), spot.last_price or 0,
                  f"{spot.basis():.6f}" if spot.basis() else "n/a",
                  len(clob.markets), toll.clip,
+                 1 if cfg.toll_pre_position else 0, toll.pre_placed, toll.pre_correct,
+                 toll.pre_wrong, toll.pre_marginal_cancel,
                  snipe.evals, snipe.no_data, snipe.near_misses, snipe.signals,
                  f"{snipe.last_fv:.4f}" if snipe.last_fv is not None else "n/a", s)
 
@@ -81,7 +84,7 @@ async def amain():
     else:
         executor = PaperExecutor(CFG, clob, ledger)
     risk = RiskManager(CFG, ledger, oracle, spot)
-    toll = TollStrategy(CFG, clob, oracle, executor, ledger, risk)
+    toll = TollStrategy(CFG, clob, oracle, spot, executor, ledger, risk)
     snipe = SnipeStrategy(CFG, clob, oracle, spot, executor, ledger, risk)
 
     ledger.event("start", f"mode={CFG.mode} spot={CFG.spot_feed}")

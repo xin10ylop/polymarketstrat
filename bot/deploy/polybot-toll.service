@@ -13,6 +13,9 @@ Environment=SPOT_FEED=coinbase
 Environment=SNIPE_ENABLED=0
 Environment=BOT_DATA_DIR=/opt/polymarketstrat/bot/data/toll
 Environment=LOG_LEVEL=INFO
+# Tier-2 queue-priority: pre-bid ~1.2s before close on clearly-decided windows,
+# confirmed against the actual close print (delete this line to disable)
+Environment=TOLL_PREPOSITION=1
 ExecStart=/opt/polymarketstrat/venv/bin/python -m bot.main
 Restart=always
 RestartSec=5

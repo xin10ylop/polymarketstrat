@@ -52,6 +52,11 @@ class Config:
     # all of the residual feed-hiccup risk for ~0.8c of upside
     toll_min_margin_usd: float = _env("TOLL_MIN_MARGIN_USD", 10.0, float)
     toll_max_window_loss: float = _env("TOLL_MAX_WINDOW_LOSS", 250.0, float)  # $ cap per window
+    # --- toll Tier 2 (S3b): pre-position ahead of close for queue priority ---
+    toll_pre_position: bool = _env("TOLL_PREPOSITION", "0") == "1"
+    toll_pre_lead_s: float = 1.2           # how long before close to act
+    toll_pre_margin_usd: float = _env("TOLL_PRE_MARGIN_USD", 40.0, float)  # floor on |predicted delta|
+    toll_pre_sigma: float = 6.0            # also require |predicted delta| >= this many sigmas of remaining-time movement
     toll_price_fine: float = 0.992         # when 0.001 tick regime is active
     toll_price_coarse: float = 0.99        # when tick regime is 0.01
     toll_min_clip: int = 50                # shares
