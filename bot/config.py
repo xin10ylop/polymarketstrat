@@ -41,9 +41,12 @@ class Config:
 
     # --- toll strategy (S3): post-close bid on the determined winner ---
     toll_enabled: bool = _env("TOLL_ENABLED", "1") == "1"
-    toll_place_delay_s: float = 2.0        # place at T+2s after window close
+    toll_place_delay_s: float = 0.2        # start trying this soon after close; the
+                                           # order goes out the moment the close print
+                                           # arrives (~T+0.5-1.2s) — every 100ms earlier
+                                           # is queue position ahead of slower bots
     toll_cancel_after_s: float = 22.0      # cancel at T+22s (settlement ~T+23s)
-    toll_boundary_wait_s: float = 2.0      # extra wait for the close sample to arrive
+    toll_boundary_wait_s: float = 4.0      # give the close sample up to this long to arrive
     # skip windows decided by less than this: exact-boundary sampling was
     # historically 100.000% correct even at $0, but tiny-margin windows carry
     # all of the residual feed-hiccup risk for ~0.8c of upside
