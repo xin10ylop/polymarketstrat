@@ -67,7 +67,9 @@ class Config:
     toll_pre_guard_floor: float = 30.0
     toll_price_fine: float = 0.992         # when 0.001 tick regime is active
     toll_price_coarse: float = 0.99        # when tick regime is 0.01
-    toll_min_clip: int = 50                # shares
+    toll_min_clip: int = 200               # shares; under wall-aware fills most windows
+                                           # fill ~0 regardless of size, so the controller
+                                           # must not shrink the clip below tail-capture size
     toll_max_clip: int = 1000
     toll_start_clip: int = 250
     toll_float_budget: float = _env("TOLL_FLOAT", 1000.0, float)  # max $ parked per window
