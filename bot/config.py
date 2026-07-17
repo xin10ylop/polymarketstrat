@@ -45,7 +45,8 @@ class Config:
                                            # order goes out the moment the close print
                                            # arrives (~T+0.5-1.2s) — every 100ms earlier
                                            # is queue position ahead of slower bots
-    toll_cancel_after_s: float = 22.0      # cancel at T+22s (settlement ~T+23s)
+    toll_cancel_after_s: float = 55.0      # settlement median ~19s but p90 ~52s; the
+                                           # late tail keeps dumping and costs nothing to wait for
     toll_boundary_wait_s: float = 4.0      # give the close sample up to this long to arrive
     # skip windows decided by less than this: exact-boundary sampling was
     # historically 100.000% correct even at $0, but tiny-margin windows carry
@@ -53,10 +54,11 @@ class Config:
     toll_min_margin_usd: float = _env("TOLL_MIN_MARGIN_USD", 10.0, float)
     toll_max_window_loss: float = _env("TOLL_MAX_WINDOW_LOSS", 250.0, float)  # $ cap per window
     # --- toll Tier 2 (S3b): pre-position ahead of close for queue priority ---
+    # The competitor wall forms in the final ~1s before close; the only way to
+    # stand in front of it is to arrive earlier, which demands a bigger safety
+    # margin. Stages are tried in order: (lead_seconds, margin_floor_usd, sigma).
     toll_pre_position: bool = _env("TOLL_PREPOSITION", "0") == "1"
-    toll_pre_lead_s: float = 1.2           # how long before close to act
-    toll_pre_margin_usd: float = _env("TOLL_PRE_MARGIN_USD", 40.0, float)  # floor on |predicted delta|
-    toll_pre_sigma: float = 6.0            # also require |predicted delta| >= this many sigmas of remaining-time movement
+    toll_pre_stages: tuple = ((5.0, 80.0, 8.0), (1.2, 40.0, 6.0))
     toll_price_fine: float = 0.992         # when 0.001 tick regime is active
     toll_price_coarse: float = 0.99        # when tick regime is 0.01
     toll_min_clip: int = 50                # shares

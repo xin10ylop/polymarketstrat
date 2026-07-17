@@ -1,13 +1,17 @@
 """Order executors. The strategies call one interface; only this layer differs
 between paper and live.
 
-PaperExecutor simulates fills against the LIVE tape and book:
-  - maker limits fill from real prints that trade at-or-through our price after
-    placement; through-price prints count fully, at-price prints via
-    `queue_share`. Each print's size is a shared pool allocated across open
-    orders in placement order — two orders can never double-spend one print.
-  - takes execute against the live ladder top (freshness-gated) and decrement
-    the simulated book so back-to-back takes can't reuse the same liquidity.
+PaperExecutor simulates fills against the LIVE tape and book under strict
+price-time priority:
+  - at placement, an order snapshots queue_ahead = all resting bid size at or
+    above its price (the competitor "wall" plus anyone else already in line);
+  - real prints at-or-through our price consume that queue FIRST; only the
+    overflow fills us. This is what a real order experiences on the CLOB —
+    the old queue_share=0.5 model ignored standing depth and overstated toll
+    fills by orders of magnitude when a large incumbent is present.
+  - a shared per-print pool prevents two of our own orders double-spending
+    one print; takes execute against the live ladder top (freshness-gated)
+    and decrement the simulated book.
 
 LiveExecutor holds the py-clob-client wiring for the real-money phase; it
 fails closed until deliberately enabled.
@@ -36,27 +40,31 @@ class Order:
     fees: float = 0.0
     fills: list = field(default_factory=list)
     last_seq: int = 0                 # print sequence cursor (survives eviction)
+    queue_ahead: float = 0.0          # resting size at-or-above our price at placement
 
 
 class PaperExecutor:
-    def __init__(self, cfg, clob, ledger, queue_share=0.5):
+    def __init__(self, cfg, clob, ledger):
         self.cfg = cfg
         self.clob = clob
         self.ledger = ledger
-        self.queue_share = queue_share
         self.open_orders = {}
         self._pool = {}               # (token, seq) -> remaining unallocated size
 
     # ---- interface ----
     def place_limit(self, wts, strategy, token, price, size):
         st = self.clob.state(token)
+        q_ahead = 0.0
+        if st is not None:
+            q_ahead = sum(sz for px, sz in st.bids.items() if px >= price - 1e-9)
         o = Order(id=next(_ids), wts=wts, strategy=strategy, token=token, side="buy",
                   price=round(price, 3), size=size, placed_ts=time.time(),
-                  last_seq=st.print_seq if st else 0)   # only future prints count
+                  last_seq=st.print_seq if st else 0,   # only future prints count
+                  queue_ahead=q_ahead)
         self.open_orders[o.id] = o
         self.ledger.record_order(o, mode="paper-limit")
-        log.info("[paper] LIMIT buy %s %.0f @ %.3f (%s w%s)", token[:12], size, price,
-                 strategy, wts)
+        log.info("[paper] LIMIT buy %s %.0f @ %.3f behind %.0f queued (%s w%s)",
+                 token[:12], size, price, q_ahead, strategy, wts)
         return o
 
     def take(self, wts, strategy, token, price_limit, size):
@@ -102,9 +110,16 @@ class PaperExecutor:
                 o.last_seq = seq
                 if ts < o.placed_ts or o.filled >= o.size or px > o.price + 1e-9:
                     continue
-                share = 1.0 if px < o.price - 1e-9 else self.queue_share
+                # FIFO: this print first pays down the queue that was resting
+                # ahead of us at placement; only the overflow can fill us
+                if o.queue_ahead > 0:
+                    eaten = min(o.queue_ahead, sz)
+                    o.queue_ahead -= eaten
+                    sz -= eaten
+                    if sz <= 0:
+                        continue
                 key = (o.token, seq)
-                pool = self._pool.get(key, sz * share)
+                pool = self._pool.get(key, sz)
                 take = min(pool, o.size - o.filled)
                 if take <= 0:
                     continue

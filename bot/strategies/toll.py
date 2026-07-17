@@ -41,13 +41,17 @@ class TollStrategy:
             now = time.time()
             wts = int(now - now % T)
             close_ts = wts + T
-            pre_ts = close_ts - self.cfg.toll_pre_lead_s
             pre = None
-            if self.cfg.toll_pre_position and time.time() < pre_ts:
-                await asyncio.sleep(max(0.0, pre_ts - time.time()))
-                if not self.risk.halted("toll"):
+            if self.cfg.toll_pre_position:
+                for lead, margin, sigma in self.cfg.toll_pre_stages:
+                    stage_ts = close_ts - lead
+                    if pre is not None or time.time() >= stage_ts:
+                        continue
+                    await asyncio.sleep(max(0.0, stage_ts - time.time()))
+                    if self.risk.halted("toll"):
+                        break
                     try:
-                        pre = await self._pre_evaluate(wts)
+                        pre = await self._pre_evaluate(wts, lead, margin, sigma)
                     except Exception as e:  # noqa: BLE001
                         log.exception("toll pre-evaluate %s failed: %s", wts, e)
             await asyncio.sleep(max(0.0, close_ts - time.time()))
@@ -74,12 +78,13 @@ class TollStrategy:
                 return k_open, k_close
             await asyncio.sleep(poll_s)
 
-    async def _pre_evaluate(self, wts):
-        """Tier 2: on a clearly-decided window, bid ~toll_pre_lead_s before
-        close for queue priority. Only fires when the live-vs-open delta
-        already clears both a flat $ floor and a vol-scaled sigma bar, so a
-        wrong call should be rare; _trade_window confirms against the real
-        close print and cancels instantly if the prediction was wrong."""
+    async def _pre_evaluate(self, wts, lead_s, margin_floor, sigma_mult):
+        """Tier 2: on a clearly-decided window, bid `lead_s` before close for
+        queue priority (the earlier the arrival, the smaller the competitor
+        queue ahead — and the bigger the required safety margin). Fires only
+        when the live-vs-open delta clears both a flat $ floor and a
+        vol-scaled sigma bar; _trade_window confirms against the real close
+        print and cancels instantly if the prediction was wrong."""
         mk = self.clob.market_for(wts)
         if mk is None:
             return None
@@ -97,9 +102,8 @@ class TollStrategy:
         vol = self.spot.vol()
         if vol is None:
             return None
-        sigma_usd = (self.cfg.toll_pre_sigma * vol * cur *
-                    ((self.cfg.toll_pre_lead_s + 2.0) ** 0.5))
-        threshold = max(self.cfg.toll_pre_margin_usd, sigma_usd, self.cfg.toll_min_margin_usd)
+        sigma_usd = sigma_mult * vol * cur * ((lead_s + 2.0) ** 0.5)
+        threshold = max(margin_floor, sigma_usd, self.cfg.toll_min_margin_usd)
         if abs(predicted_delta) < threshold:
             return None
         predicted_winner = "up" if predicted_delta >= 0 else "down"
@@ -115,8 +119,8 @@ class TollStrategy:
             return None
         order = self.exec.place_limit(wts, "toll", token, price, size)
         self.pre_placed += 1
-        log.info("w%s PRE-position %s (pred %+.2f >= thr %.2f) bid %.0f @ %.3f",
-                 wts, predicted_winner, predicted_delta, threshold, size, price)
+        log.info("w%s PRE-position %s @T-%.1fs (pred %+.2f >= thr %.2f) bid %.0f @ %.3f",
+                 wts, predicted_winner, lead_s, predicted_delta, threshold, size, price)
         return order, predicted_winner
 
     async def _trade_window(self, wts, pre=None):
