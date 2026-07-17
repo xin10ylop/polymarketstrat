@@ -13,6 +13,10 @@ Environment=SPOT_FEED=coinbase
 Environment=TOLL_ENABLED=0
 Environment=BOT_DATA_DIR=/opt/polymarketstrat/bot/data/snipe
 Environment=LOG_LEVEL=INFO
+# snipe takes up to 250-share clips (~$200); one normal losing trade exceeds the
+# default $25 breaker, which would end every losing day at its first loss and
+# starve the qualification sample. $250 = ~2 losing trades, still a hard stop.
+Environment=MAX_DAILY_LOSS=250
 ExecStart=/opt/polymarketstrat/venv/bin/python -m bot.main
 Restart=always
 RestartSec=5
