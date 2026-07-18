@@ -143,24 +143,5 @@ class PaperExecutor:
             self._pool = dict(list(self._pool.items())[-5000:])
 
 
-class LiveExecutor:
-    """Real-money executor (py-clob-client). Deliberately fails closed."""
-
-    def __init__(self, cfg, clob, ledger):
-        if not (cfg.pm_private_key and cfg.pm_api_key):
-            raise RuntimeError(
-                "LiveExecutor requires PM_PRIVATE_KEY/PM_API_KEY/... env vars. "
-                "Run the paper executor until the strategy is re-qualified live.")
-        try:
-            from py_clob_client.client import ClobClient  # noqa: WPS433
-        except ImportError as e:
-            raise RuntimeError("pip install py-clob-client to trade live") from e
-        self.client = ClobClient(
-            cfg.clob_url, key=cfg.pm_private_key, chain_id=137,
-            creds={"api_key": cfg.pm_api_key, "api_secret": cfg.pm_api_secret,
-                   "api_passphrase": cfg.pm_api_passphrase},
-            funder=cfg.pm_funder or None)
-        self.cfg, self.clob, self.ledger = cfg, clob, ledger
-        raise RuntimeError("LiveExecutor wiring is present but intentionally not "
-                           "enabled: qualify the paper bot first, then remove this "
-                           "guard consciously.")
+# The real-money executor lives in bot/engine/live.py (LiveExecutor + Bankroll
+# + balance_reconciler) behind three independent safety locks.

@@ -12,7 +12,7 @@ import signal
 import time
 
 from bot.config import CFG
-from bot.engine.executor import LiveExecutor, PaperExecutor
+from bot.engine.executor import PaperExecutor
 from bot.engine.ledger import Ledger
 from bot.engine.risk import RiskManager
 from bot.feeds.clob import ClobFeed
@@ -80,8 +80,13 @@ async def amain():
     spot = SpotFeed(CFG)
     oracle = Oracle(CFG, spot=spot)
     spot.oracle_ref = oracle
+    reconciler_task = None
     if CFG.mode == "live":
-        executor = LiveExecutor(CFG, clob, ledger)   # fails closed by design
+        from bot.engine.live import Bankroll, LiveExecutor, balance_reconciler
+        bankroll = Bankroll(CFG)
+        CFG.max_daily_loss = bankroll.daily_stop     # risk breaker scales with bankroll
+        executor = LiveExecutor(CFG, clob, ledger, bankroll)
+        reconciler_task = balance_reconciler(CFG, ledger, executor)
     else:
         executor = PaperExecutor(CFG, clob, ledger)
     risk = RiskManager(CFG, ledger, oracle, spot)
@@ -100,6 +105,8 @@ async def amain():
         asyncio.create_task(reconciler(CFG, clob, ledger, toll), name="reconciler"),
         asyncio.create_task(status(CFG, ledger, oracle, spot, clob, toll, snipe), name="status"),
     ]
+    if reconciler_task is not None:
+        tasks.append(asyncio.create_task(reconciler_task, name="balance-reconciler"))
     stop = asyncio.Event()
     loop = asyncio.get_running_loop()
     for sig in (signal.SIGINT, signal.SIGTERM):

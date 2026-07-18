@@ -118,7 +118,16 @@ class Config:
     discovery_lookahead: int = 3           # subscribe this many upcoming windows
     status_every_s: int = 60
 
-    # --- live trading (unused in paper mode; provision via env, never commit) ---
+    # --- live trading (provision via EnvironmentFile on the trading server only;
+    # three locks: mode=live+BANKROLL, LIVE_CONFIRM typed by a human, LIVE_SHADOW=0) ---
+    live_shadow: bool = _env("LIVE_SHADOW", "1") == "1"       # DEFAULT ON: no real orders
+    live_confirm: str = _env("LIVE_CONFIRM", "")
+    live_strategies: tuple = tuple(_env("LIVE_STRATEGIES", "snipe").split(","))
+    bankroll: float = _env("BANKROLL", 0.0, float)            # dollars; required in live
+    live_per_trade_frac: float = _env("LIVE_PER_TRADE_FRAC", 0.10, float)
+    live_daily_stop_frac: float = _env("LIVE_DAILY_STOP_FRAC", 0.20, float)
+    live_max_trades_day: int = _env("LIVE_MAX_TRADES_DAY", 40, int)
+    pm_signature_type: int = _env("PM_SIGNATURE_TYPE", 1, int)  # 1=email/Magic, 2=browser proxy
     pm_private_key: str = _env("PM_PRIVATE_KEY", "")
     pm_api_key: str = _env("PM_API_KEY", "")
     pm_api_secret: str = _env("PM_API_SECRET", "")

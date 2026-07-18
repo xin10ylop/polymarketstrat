@@ -1,0 +1,16 @@
+[Unit]
+Description=Polymarket LIVE bot - BTC snipe (real money)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/polymarketstrat
+EnvironmentFile=/etc/polybot/live.env
+ExecStart=/opt/polymarketstrat/venv/bin/python -m bot.main
+Restart=always
+RestartSec=10
+MemoryMax=200M
+
+[Install]
+WantedBy=multi-user.target
