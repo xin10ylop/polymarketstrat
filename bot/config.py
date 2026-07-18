@@ -13,25 +13,31 @@ def _env(name, default, cast=str):
     return cast(v) if v is not None else default
 
 
+_COIN = os.environ.get("COIN", "btc").lower()   # btc | eth | sol | xrp | doge
+
+
 @dataclass
 class Config:
     mode: str = _env("BOT_MODE", "paper")            # paper | live
+    coin: str = _COIN
     family: str = "5m"
     window_secs: int = 300
-    slug_prefix: str = "btc-updown-5m"
+    slug_prefix: str = _env("SLUG_PREFIX", f"{_COIN}-updown-5m")
 
     # --- endpoints ---
     gamma_url: str = "https://gamma-api.polymarket.com"
     clob_url: str = "https://clob.polymarket.com"
     clob_ws: str = "wss://ws-subscriptions-clob.polymarket.com/ws/market"
     coinbase_ws: str = "wss://ws-feed.exchange.coinbase.com"
-    binance_ws: str = "wss://stream.binance.com:9443/ws/btcusdt@aggTrade"
+    coinbase_product: str = _env("COINBASE_PRODUCT", f"{_COIN.upper()}-USD")
+    binance_ws: str = _env("BINANCE_WS",
+                           f"wss://stream.binance.com:9443/ws/{_COIN}usdt@aggTrade")
     spot_feed: str = _env("SPOT_FEED", "coinbase")   # coinbase | binance (binance is US-geoblocked)
-    # Resolution feed: Polymarket's published Chainlink BTC/USD data stream —
-    # the exact feed named in each market's resolutionSource. NEVER the on-chain
-    # Polygon aggregator (33s rounds -> ~8.6% miscalled windows historically).
+    # Resolution feed: Polymarket's published Chainlink data stream for this
+    # coin — the exact feed named in each market's resolutionSource. NEVER the
+    # on-chain aggregator (33s rounds -> ~8.6% miscalled windows historically).
     pm_live_ws: str = "wss://ws-live-data.polymarket.com"
-    pm_price_symbol: str = "btc/usd"
+    pm_price_symbol: str = _env("PM_PRICE_SYMBOL", f"{_COIN}/usd")
 
     # --- fees (verified May-Jul 2026: taker 0.07*p*(1-p), maker 0). CLOB metadata
     # now shows base_fee=1000 for both sides; until a real fill proves otherwise we
@@ -80,6 +86,14 @@ class Config:
     # --- snipe strategy (S2): basis-corrected terminal taker ---
     snipe_enabled: bool = _env("SNIPE_ENABLED", "1") == "1"
     snipe_eval_from_s: float = -6.0        # start evaluating at T-6s
+    snipe_poll_s: float = 0.05             # eval cadence in the final seconds: the median
+                                           # qualifying ask survives ~142ms, so every 50ms
+                                           # of reaction time is fill share in the race
+    # live-fidelity gate: after a signal, wait this long and require the ask to
+    # still be there before "filling" — simulates network latency + Polymarket's
+    # 250ms marketable-order hold. ~82% of paper's instant fills fail this test
+    # (audited); with it ON, paper P&L ~= what real money would capture. 0 = off.
+    snipe_take_recheck_s: float = _env("SNIPE_TAKE_RECHECK_S", 0.5, float)
     snipe_signal_lag_s: float = 1.0        # act on spot data at least 1s old (validated latency)
     snipe_fv_min: float = 0.995
     snipe_ask_max: float = 0.97

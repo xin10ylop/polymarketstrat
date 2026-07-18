@@ -30,6 +30,7 @@ class SnipeStrategy:
         self.no_data = 0        # ticks skipped for missing feed data
         self.near_misses = 0    # fv extreme but no tradeable ask on that side
         self.signals = 0        # takes attempted
+        self.recheck_fail = 0   # ask vanished during the live-latency recheck
         self.last_fv = None
 
     async def run(self):
@@ -46,15 +47,15 @@ class SnipeStrategy:
                 continue
             if self.cfg.snipe_enabled and not self.risk.halted("snipe"):
                 try:
-                    if self._evaluate(wts):
+                    if await self._evaluate(wts):
                         # one shot per window: sleep to the next one
                         await asyncio.sleep(max(0.0, wts + T - time.time()))
                         continue
                 except Exception as e:  # noqa: BLE001
                     log.exception("snipe eval failed: %s", e)
-            await asyncio.sleep(0.2)
+            await asyncio.sleep(self.cfg.snipe_poll_s)
 
-    def _evaluate(self, wts):
+    async def _evaluate(self, wts):
         T = self.cfg.window_secs
         mk = self.clob.market_for(wts)
         if mk is None or self.oracle.degraded:
@@ -89,6 +90,18 @@ class SnipeStrategy:
                 or st.best_ask_size < self.cfg.snipe_min_ask_size):
             self.near_misses += 1
             return False
+        if self.cfg.snipe_take_recheck_s > 0:
+            # live-fidelity gate: a real order needs ~network + 250ms exchange
+            # hold to arrive; only fill if the ask is still there afterwards
+            # (~82% of instantly-visible asks are gone by then — audited)
+            await asyncio.sleep(self.cfg.snipe_take_recheck_s)
+            st = self.clob.state(token)
+            if (st is None or not st.book_fresh(self.cfg.book_max_age_s)
+                    or st.best_ask is None
+                    or st.best_ask > self.cfg.snipe_ask_max
+                    or st.best_ask_size < self.cfg.snipe_min_ask_size):
+                self.recheck_fail += 1
+                return False
         size = min(st.best_ask_size, self.cfg.snipe_max_clip)
         order = self.exec.take(wts, "snipe", token, self.cfg.snipe_ask_max, size)
         if order:

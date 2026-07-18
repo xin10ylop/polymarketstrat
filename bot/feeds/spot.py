@@ -102,9 +102,10 @@ class SpotFeed:
 
     async def _run_coinbase(self, session):
         async with session.ws_connect(self.cfg.coinbase_ws, heartbeat=15) as ws:
-            await ws.send_json({"type": "subscribe", "product_ids": ["BTC-USD"],
+            await ws.send_json({"type": "subscribe",
+                                "product_ids": [self.cfg.coinbase_product],
                                 "channels": ["matches"]})
-            log.info("coinbase feed connected")
+            log.info("coinbase feed connected (%s)", self.cfg.coinbase_product)
             async for msg in ws:
                 if msg.type != aiohttp.WSMsgType.TEXT:
                     break
