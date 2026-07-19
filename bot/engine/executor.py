@@ -68,25 +68,46 @@ class PaperExecutor:
         return o
 
     def take(self, wts, strategy, token, price_limit, size):
+        """Marketable-limit semantics: sweep every ask level <= price_limit,
+        cheapest first, up to `size` — exactly what a real FAK at that limit
+        does on the CLOB (the old version stopped at top-of-book)."""
         st = self.clob.state(token)
         if (st is None or not st.book_fresh(self.cfg.book_max_age_s)
-                or st.best_ask is None or st.best_ask > price_limit
-                or st.best_ask_size <= 0):
+                or st.best_ask is None or st.best_ask > price_limit):
             return None
-        px = st.best_ask
-        fill_sz = min(size, st.best_ask_size)
-        st.asks[px] = st.asks.get(px, 0.0) - fill_sz     # consume simulated liquidity
-        if st.asks.get(px, 0.0) <= 0:
-            st.asks.pop(px, None)
-        fee = self.cfg.taker_fee_mult * px * (1 - px) * fill_sz
+        remaining = size
+        total_sz = total_cost = total_fee = 0.0
+        now = time.time()
+        fills = []
+        for px in sorted(p for p in list(st.asks) if p <= price_limit + 1e-9):
+            if remaining <= 0:
+                break
+            avail = st.asks.get(px, 0.0)
+            take_sz = min(avail, remaining)
+            if take_sz <= 0:
+                continue
+            fee = self.cfg.taker_fee_mult * px * (1 - px) * take_sz
+            fills.append((now, px, take_sz, fee, False))
+            total_sz += take_sz
+            total_cost += px * take_sz
+            total_fee += fee
+            remaining -= take_sz
+            st.asks[px] = avail - take_sz                # consume simulated liquidity
+            if st.asks[px] <= 0:
+                st.asks.pop(px, None)
+        if total_sz <= 0:
+            return None
+        avg_px = total_cost / total_sz
         o = Order(id=next(_ids), wts=wts, strategy=strategy, token=token, side="buy",
-                  price=px, size=fill_sz, placed_ts=time.time(), status="done",
-                  filled=fill_sz, fees=fee)
-        o.fills.append((o.placed_ts, px, fill_sz, fee, False))
+                  price=round(avg_px, 4), size=total_sz, placed_ts=now, status="done",
+                  filled=total_sz, fees=total_fee)
+        o.fills = fills
         self.ledger.record_order(o, mode="paper-take")
-        self.ledger.record_fill(o, o.placed_ts, px, fill_sz, fee, maker=False)
-        log.info("[paper] TAKE %s %.0f @ %.3f fee %.4f (%s w%s)", token[:12], fill_sz,
-                 px, fee, strategy, wts)
+        for ts, px, sz, fee, mk in fills:
+            self.ledger.record_fill(o, ts, px, sz, fee, maker=False, commit=False)
+        self.ledger.commit()
+        log.info("[paper] TAKE %s %.1f @ avg %.3f (%d levels) fee %.4f (%s w%s)",
+                 token[:12], total_sz, avg_px, len(fills), total_fee, strategy, wts)
         return o
 
     def cancel(self, order_id):

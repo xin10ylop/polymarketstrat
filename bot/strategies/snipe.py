@@ -31,7 +31,9 @@ class SnipeStrategy:
         self.near_misses = 0    # fv extreme but no tradeable ask on that side
         self.signals = 0        # takes attempted
         self.recheck_fail = 0   # ask vanished during the live-latency recheck
+        self.retries = 0        # 2nd+ attempts within one window
         self.last_fv = None
+        self._wstate = None     # (wts, {attempts, shares, cost}) per-window budget
 
     async def run(self):
         T = self.cfg.window_secs
@@ -48,15 +50,26 @@ class SnipeStrategy:
             if self.cfg.snipe_enabled and not self.risk.halted("snipe"):
                 try:
                     if await self._evaluate(wts):
-                        # one shot per window: sleep to the next one
+                        # window budget exhausted: sleep to the next one
                         await asyncio.sleep(max(0.0, wts + T - time.time()))
                         continue
                 except Exception as e:  # noqa: BLE001
                     log.exception("snipe eval failed: %s", e)
             await asyncio.sleep(self.cfg.snipe_poll_s)
 
+    def _window_budget(self, wts):
+        if self._wstate is None or self._wstate[0] != wts:
+            self._wstate = (wts, {"attempts": 0, "shares": 0.0, "cost": 0.0})
+        return self._wstate[1]
+
     async def _evaluate(self, wts):
+        """Returns True when this window's budget is exhausted (stop polling)."""
         T = self.cfg.window_secs
+        w = self._window_budget(wts)
+        if (w["attempts"] >= self.cfg.snipe_max_attempts
+                or w["shares"] >= self.cfg.snipe_max_clip - 1
+                or w["cost"] >= self.cfg.snipe_window_max_cost):
+            return True
         mk = self.clob.market_for(wts)
         if mk is None or self.oracle.degraded:
             return False
@@ -90,10 +103,14 @@ class SnipeStrategy:
                 or st.best_ask_size < self.cfg.snipe_min_ask_size):
             self.near_misses += 1
             return False
+        w["attempts"] += 1
+        if w["attempts"] > 1:
+            self.retries += 1
         if self.cfg.snipe_take_recheck_s > 0:
             # live-fidelity gate: a real order needs ~network + 250ms exchange
             # hold to arrive; only fill if the ask is still there afterwards
-            # (~82% of instantly-visible asks are gone by then — audited)
+            # (~82% of instantly-visible asks are gone by then — audited).
+            # A failed recheck consumed an attempt, exactly like a missed FAK.
             await asyncio.sleep(self.cfg.snipe_take_recheck_s)
             st = self.clob.state(token)
             if (st is None or not st.book_fresh(self.cfg.book_max_age_s)
@@ -102,12 +119,14 @@ class SnipeStrategy:
                     or st.best_ask_size < self.cfg.snipe_min_ask_size):
                 self.recheck_fail += 1
                 return False
-        size = min(st.best_ask_size, self.cfg.snipe_max_clip)
-        order = self.exec.take(wts, "snipe", token, self.cfg.snipe_ask_max, size)
+        remaining = min(self.cfg.snipe_max_clip - w["shares"],
+                        (self.cfg.snipe_window_max_cost - w["cost"]) / max(st.best_ask, 0.01))
+        order = self.exec.take(wts, "snipe", token, self.cfg.snipe_ask_max, remaining)
         if order:
             self.signals += 1
-            log.info("w%s SNIPE %s fv=%.4f ask=%.3f x%.0f (S=%.2f K=%.2f basis=%.6f "
-                     "vol=%.2e tau=%.1f)", wts, side, fv, order.price, order.filled,
-                     s_adj, k, basis, vol, tau)
-            return True
+            w["shares"] += order.filled
+            w["cost"] += order.filled * order.price
+            log.info("w%s SNIPE %s att=%d fv=%.4f avg=%.3f x%.1f (S=%.2f K=%.2f "
+                     "basis=%.6f vol=%.2e tau=%.1f)", wts, side, w["attempts"], fv,
+                     order.price, order.filled, s_adj, k, basis, vol, tau)
         return False

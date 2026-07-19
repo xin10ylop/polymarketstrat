@@ -99,6 +99,11 @@ class Config:
     snipe_ask_max: float = 0.97
     snipe_min_ask_size: float = 12.0
     snipe_max_clip: int = 250              # hard cap: EV collapses above (adverse selection)
+    # retry/replace: keep re-firing while the signal persists, until the window
+    # budget is spent — a missed ask (someone beat us) costs nothing; the next
+    # stale ask in the same window is a fresh chance
+    snipe_max_attempts: int = _env("SNIPE_MAX_ATTEMPTS", 4, int)
+    snipe_window_max_cost: float = _env("SNIPE_WINDOW_MAX_COST", 300.0, float)
     snipe_vol_floor: float = 1e-6
     basis_window_s: int = 60               # rolling median window for oracle/spot basis
     vol_window_s: int = 300                # realized vol estimator window

@@ -111,7 +111,9 @@ class LiveExecutor:
             return None
         px = st.best_ask
         cap_sz = self.bankroll.per_trade_cap / max(px, 0.01)
-        fill_sz = round(min(size, st.best_ask_size, cap_sz), 2)
+        # do NOT cap by top-of-book size: a FAK at the limit sweeps every
+        # cheaper level on the real book in one shot
+        fill_sz = round(min(size, cap_sz), 2)
         if fill_sz < 5:                                  # exchange minimum
             return None
 
