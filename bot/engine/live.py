@@ -52,14 +52,16 @@ class LiveExecutor:
         if not cfg.pm_private_key:
             raise RuntimeError("live mode needs PM_PRIVATE_KEY (never commit it; "
                                "put it in the EnvironmentFile with chmod 600)")
-        from py_clob_client.client import ClobClient  # noqa: WPS433
+        # CLOB V2 (Apr 28 2026 migration): the archived v1 client signs an order
+        # struct the exchange no longer accepts — only py-clob-client-v2 works
+        from py_clob_client_v2.client import ClobClient  # noqa: WPS433
         self.cfg, self.clob, self.ledger, self.bankroll = cfg, clob, ledger, bankroll
         self.shadow = cfg.live_shadow
         self.client = ClobClient(
             cfg.clob_url, chain_id=137, key=cfg.pm_private_key,
             signature_type=cfg.pm_signature_type or None,
             funder=cfg.pm_funder or None)
-        self.client.set_api_creds(self.client.create_or_derive_api_creds())
+        self.client.set_api_creds(self.client.create_or_derive_api_key())
         self.open_orders = {}
         self._in_flight = False
         self._trades_today = 0
@@ -84,12 +86,12 @@ class LiveExecutor:
             self._day, self._trades_today = d, 0
 
     def fetch_balance(self):
-        """Collateral (USDC) balance on the exchange, in dollars."""
+        """Collateral (pUSD, 1:1 USDC) balance on the exchange, in dollars."""
         try:
-            from py_clob_client.clob_types import AssetType, BalanceAllowanceParams
+            from py_clob_client_v2.clob_types import AssetType, BalanceAllowanceParams
             r = self.client.get_balance_allowance(
                 BalanceAllowanceParams(asset_type=AssetType.COLLATERAL))
-            return float(r.get("balance", 0)) / 1e6      # USDC has 6 decimals
+            return float(r.get("balance", 0)) / 1e6      # pUSD has 6 decimals
         except Exception as e:  # noqa: BLE001
             log.error("balance fetch failed: %s", e)
             return -1.0
@@ -126,12 +128,25 @@ class LiveExecutor:
 
         self._in_flight = True
         try:
-            from py_clob_client.clob_types import OrderArgs, OrderType
-            from py_clob_client.order_builder.constants import BUY
+            from py_clob_client_v2.clob_types import OrderArgs, OrderType
+            from py_clob_client_v2.order_builder.constants import BUY
+            # V2: no fee_rate_bps/nonce — fees are protocol-computed at match time
             args = OrderArgs(token_id=token, price=round(price_limit, 3),
-                             size=fill_sz, side=BUY, fee_rate_bps=1000)
+                             size=fill_sz, side=BUY)
             signed = self.client.create_order(args)
-            resp = self.client.post_order(signed, OrderType.FAK)
+            try:
+                resp = self.client.post_order(signed, OrderType.FAK)
+            except Exception as e:  # noqa: BLE001
+                msg = str(e)
+                if "no orders found to match" in msg:
+                    self.ledger.event("live_miss", f"w{wts} FAK empty (raced)")
+                    return None                    # clean miss: rival got there first
+                if any(k in msg for k in ("Too Many Requests", "post-only mode",
+                                          "Trading is currently", "425")):
+                    self.ledger.event("live_backoff", f"w{wts} {msg[:80]}")
+                    time.sleep(2)                  # transient exchange state
+                    return None
+                raise
             matched, avg_px = self._parse_fill(resp, price_limit)
             if matched <= 0:
                 self.ledger.event("live_miss", f"w{wts} FAK no fill ({resp})")
@@ -158,22 +173,23 @@ class LiveExecutor:
 
     @staticmethod
     def _parse_fill(resp, fallback_px):
-        """Extract matched size and average price from a post_order response."""
-        if not isinstance(resp, dict):
+        """Extract matched size and average price from a POST /order response.
+
+        V2 schema: {success, orderID, status: live|matched|delayed,
+        makingAmount, takingAmount, tradeIDs, ...} — amounts are fixed-point
+        strings with 6 decimals; BUY: taking=outcome shares, making=pUSD spent.
+        transactionsHashes is no longer returned for FAK matches (Jul 17 2026
+        changelog) — never key on it."""
+        if not isinstance(resp, dict) or not resp.get("success", False):
             return 0.0, fallback_px
-        if not resp.get("success", False):
-            return 0.0, fallback_px
-        taking = resp.get("takingAmount") or resp.get("taking_amount")
-        making = resp.get("makingAmount") or resp.get("making_amount")
         try:
-            shares = float(taking) if taking else 0.0    # BUY: taking = outcome tokens
-            usdc = float(making) if making else 0.0      # making = collateral spent
+            shares = float(resp.get("takingAmount") or 0) / 1e6
+            usdc = float(resp.get("makingAmount") or 0) / 1e6
             if shares > 0:
                 return shares, (usdc / shares if usdc > 0 else fallback_px)
         except (TypeError, ValueError):
             pass
-        status = str(resp.get("status", "")).lower()
-        if status in ("matched", "success"):
+        if str(resp.get("status", "")).lower() == "matched":
             return -1.0, fallback_px                     # matched, size unknown
         return 0.0, fallback_px
 

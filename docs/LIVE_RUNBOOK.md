@@ -47,7 +47,7 @@ zero-incident week; down one rung after a losing week. Change = edit
 
 1. **Server**: non-US VPS (US IPs cannot place orders). Provision like the
    paper droplet: clone repo, `python3 -m venv venv`,
-   `venv/bin/pip install aiohttp py-clob-client`, run `venv/bin/python -m
+   `venv/bin/pip install aiohttp py-clob-client-v2`, run `venv/bin/python -m
    bot.preflight` (all PASS required), install chrony.
 2. **Secrets**: `mkdir -p /etc/polybot && cp bot/deploy/live.env.template
    /etc/polybot/live.env && chmod 600 /etc/polybot/live.env`; owner fills
