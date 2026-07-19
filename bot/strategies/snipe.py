@@ -44,7 +44,7 @@ class SnipeStrategy:
             if now < eval_start:
                 await asyncio.sleep(min(eval_start - now, 1.0))
                 continue
-            if now >= wts + T:
+            if now >= wts + T + self.cfg.snipe_eval_until_s:
                 await asyncio.sleep(0.2)
                 continue
             if self.cfg.snipe_enabled and not self.risk.halted("snipe"):
@@ -100,7 +100,9 @@ class SnipeStrategy:
         if (st is None or not st.book_fresh(self.cfg.book_max_age_s)
                 or st.best_ask is None
                 or st.best_ask > self.cfg.snipe_ask_max
-                or st.best_ask_size < self.cfg.snipe_min_ask_size):
+                or st.best_ask < self.cfg.snipe_price_floor
+                or st.best_ask_size < self.cfg.snipe_min_ask_size
+                or st.best_ask_size > self.cfg.snipe_skip_ask_above):
             self.near_misses += 1
             return False
         w["attempts"] += 1
@@ -121,6 +123,8 @@ class SnipeStrategy:
                 return False
         remaining = min(self.cfg.snipe_max_clip - w["shares"],
                         (self.cfg.snipe_window_max_cost - w["cost"]) / max(st.best_ask, 0.01))
+        if w["attempts"] == 1:
+            remaining = min(remaining, self.cfg.snipe_first_clip)
         order = self.exec.take(wts, "snipe", token, self.cfg.snipe_ask_max, remaining)
         if order:
             self.signals += 1

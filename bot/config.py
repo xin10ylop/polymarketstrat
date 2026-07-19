@@ -99,10 +99,24 @@ class Config:
     snipe_ask_max: float = 0.97
     snipe_min_ask_size: float = 12.0
     snipe_max_clip: int = 250              # hard cap: EV collapses above (adverse selection)
+    snipe_skip_ask_above: float = _env("SNIPE_SKIP_ASK_ABOVE", 500.0, float)
+    # ^ giant late asks are informed (two audits: >=250-share bucket -2.4c/sh,
+    #   first-shot $/day falls with size); refuse to engage walls of offers
+    snipe_first_clip: int = _env("SNIPE_FIRST_CLIP", 100, int)
+    # ^ small first bite: a fresh big ask is adversely selected; an ask that
+    #   SURVIVES a first take is proven stale — retries size up to the full clip
+    snipe_price_floor: float = _env("SNIPE_PRICE_FLOOR", 0.0, float)
+    # ^ 0 = off. Jun-Jul reconstruction says deep (<=0.80) asks decayed to -EV,
+    #   but live paper fills there still print +EV — let the paper ledger
+    #   referee; flip to 0.90 if a week of deep fills bleeds (runbook item)
+    snipe_eval_until_s: float = _env("SNIPE_EVAL_UNTIL_S", -1.5, float)
+    # ^ stop evaluating this close to the bell: the final second is sharply
+    #   -EV (-5.6c/sh) — late cheap offers know the last tick
     # retry/replace: keep re-firing while the signal persists, until the window
     # budget is spent — a missed ask (someone beat us) costs nothing; the next
-    # stale ask in the same window is a fresh chance
-    snipe_max_attempts: int = _env("SNIPE_MAX_ATTEMPTS", 4, int)
+    # stale ask in the same window is a fresh chance. Marginal EV of a 3rd
+    # repeat is ~zero and a lost window loses on EVERY attempt: cap at 3.
+    snipe_max_attempts: int = _env("SNIPE_MAX_ATTEMPTS", 3, int)
     snipe_window_max_cost: float = _env("SNIPE_WINDOW_MAX_COST", 300.0, float)
     snipe_vol_floor: float = 1e-6
     basis_window_s: int = 60               # rolling median window for oracle/spot basis

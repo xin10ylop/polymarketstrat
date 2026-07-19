@@ -98,3 +98,13 @@ before anything else).
 See `docs/research/` for the API-mechanics brief and the retry/sweep EV study
 that set the parameters above; they carry VERIFIED/INFERRED markings — trust
 them in that order.
+
+## Weekly parameter watch (from the retry/sweep study)
+
+- Bucket the week's snipe fills by entry price (<=0.80 vs 0.90-0.97). The
+  Jun-Jul reconstruction says deep asks decayed to -EV while live paper still
+  prints +EV there. If a week of deep fills is net negative:
+  `SNIPE_PRICE_FLOOR=0.90` in the unit env and restart. Do not raise the 0.97
+  ceiling under any circumstances (0.97-0.985 measured significantly -EV).
+- Attempts histogram: if 3rd attempts are net losers over a week, drop
+  SNIPE_MAX_ATTEMPTS to 2.
