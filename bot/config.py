@@ -126,7 +126,13 @@ class Config:
     # --- risk / kill-switches ---
     max_daily_loss: float = _env("MAX_DAILY_LOSS", 25.0, float)   # $ paper, halt for the day
     snipe_trailing_n: int = 30             # settled fills in the trailing window
-    snipe_trailing_pnl_min: float = -8.0   # halt snipe if trailing-N pnl below this ($)
+    # Fast bleed tripwire, sized to the day's budget so it scales with bankroll
+    # (paper $250 -> -$200; live 20%-of-bankroll -> -16%). A FIXED $ threshold
+    # is wrong: single snipe losses are $85-210, so a trailing window routinely
+    # dips tens of dollars on pure variance — a tight fixed value false-halts a
+    # healthy +EV strategy. This fires only when a trailing window has lost most
+    # of a full day's budget, i.e. a genuine bleed, not noise.
+    snipe_trailing_pnl_frac: float = _env("SNIPE_TRAILING_PNL_FRAC", 0.8, float)
     max_unmarked_fills: int = 5            # halt if this many old fills lack settlement
     oracle_max_staleness_s: float = 5.0    # oracle feed silence -> degraded, no trading
     feed_max_silence_s: float = 10.0       # spot feed silence pauses the snipe

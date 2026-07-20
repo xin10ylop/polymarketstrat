@@ -47,9 +47,9 @@ class RiskManager:
         if pnl < -self.cfg.max_daily_loss:
             self.halt("all", f"daily loss {pnl:.2f} < -{self.cfg.max_daily_loss}")
         tp, n = self.ledger.snipe_trailing_pnl(self.cfg.snipe_trailing_n)
-        if n >= self.cfg.snipe_trailing_n and tp < self.cfg.snipe_trailing_pnl_min:
-            self.halt("snipe", f"trailing {n}-fill pnl {tp:.2f} < "
-                      f"{self.cfg.snipe_trailing_pnl_min}")
+        trail_floor = -self.cfg.snipe_trailing_pnl_frac * self.cfg.max_daily_loss
+        if n >= self.cfg.snipe_trailing_n and tp < trail_floor:
+            self.halt("snipe", f"trailing {n}-fill pnl {tp:.2f} < {trail_floor:.2f}")
         if self.ledger.mismatches() > 0:
             self.halt("toll", "oracle/exchange winner mismatch detected")
         if self.ledger.unmarked_old_fills() > self.cfg.max_unmarked_fills:
