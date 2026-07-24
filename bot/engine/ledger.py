@@ -101,6 +101,18 @@ class Ledger:
             "SELECT COUNT(*) FROM fills WHERE pnl IS NULL AND ts < ?",
             (time.time() - older_than_s,)).fetchone()[0]
 
+    def snipe_fills_since_trailing_halt(self):
+        """Settled snipe fills newer than the most recent trailing-PnL halt
+        (a huge number if no such halt exists)."""
+        row = self.db.execute(
+            "SELECT MAX(ts) FROM events WHERE kind='HALT' "
+            "AND detail LIKE 'snipe: trailing%'").fetchone()
+        if not row or row[0] is None:
+            return 1 << 30
+        return self.db.execute(
+            "SELECT COUNT(*) FROM fills WHERE strategy LIKE 'snipe%' "
+            "AND pnl IS NOT NULL AND ts > ?", (row[0],)).fetchone()[0]
+
     def mismatches(self):
         return self.db.execute(
             "SELECT COALESCE(SUM(mismatch),0) FROM settlements").fetchone()[0]

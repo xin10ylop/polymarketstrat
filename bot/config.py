@@ -133,6 +133,11 @@ class Config:
     # healthy +EV strategy. This fires only when a trailing window has lost most
     # of a full day's budget, i.e. a genuine bleed, not noise.
     snipe_trailing_pnl_frac: float = _env("SNIPE_TRAILING_PNL_FRAC", 0.8, float)
+    # after a trailing halt, the breaker re-arms only once this many NEW fills
+    # have settled — otherwise a restart re-reads the same 30 ledger fills and
+    # re-halts instantly (deadlock: can't dilute the window while halted).
+    # A restart = the human chose to resume; judge the NEW trading.
+    snipe_trailing_rearm_fills: int = _env("SNIPE_TRAILING_REARM", 10, int)
     max_unmarked_fills: int = 5            # halt if this many old fills lack settlement
     oracle_max_staleness_s: float = 5.0    # oracle feed silence -> degraded, no trading
     feed_max_silence_s: float = 10.0       # spot feed silence pauses the snipe
