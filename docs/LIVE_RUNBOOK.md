@@ -108,3 +108,13 @@ them in that order.
   ceiling under any circumstances (0.97-0.985 measured significantly -EV).
 - Attempts histogram: if 3rd attempts are net losers over a week, drop
   SNIPE_MAX_ATTEMPTS to 2.
+
+### Reading log (append each check)
+
+- 2026-07-24 (BTC paper, lifetime to date): <=0.80: 117 fills +$1,369 (+16.5c/sh);
+  0.80-0.90: 40 fills -$79 (-3.0c/sh, NOT significant at n=40); 0.90-0.98:
+  114 fills +$494 (+3.6c/sh). VERDICT: deep band is the profit engine — the
+  reconstruction's decay warning is contradicted by live paper; price floor
+  stays OFF. Watch the 0.80-0.90 mid-band: if still negative at n~100, consider
+  a mid-band skip. Trailing breaker fired correctly 07-24 01:45 (-$267 fast
+  bleed) and was cleared by restart after this check.
