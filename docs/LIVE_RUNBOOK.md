@@ -11,6 +11,9 @@ in REPORT.md; this file is only about running real money safely.
 - Paper fleet (BTC toll + BTC/ETH/SOL snipe) runs on the NYC droplet
   (165.227.83.238) — it is the permanent control group. Its snipe fills pass a
   0.5s live-fidelity gate, so paper P&L ≈ what live should capture.
+  The gate is PAPER-ONLY (enforced in code): in live mode the bot fires the FAK
+  immediately — its latency is real, and the exchange decides the race. Never
+  "re-add" a pre-send wait to live; it would forfeit ~every contested ask.
 - `bot/engine/live.py`: LiveExecutor (FAK marketable-limit takes, sweep-sized,
   real matched size/price recorded from the exchange response), Bankroll
   (manual `BANKROLL` only — the bot NEVER sizes off the account balance),

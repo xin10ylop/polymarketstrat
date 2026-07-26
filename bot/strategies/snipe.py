@@ -115,11 +115,13 @@ class SnipeStrategy:
         w["attempts"] += 1
         if w["attempts"] > 1:
             self.retries += 1
-        if self.cfg.snipe_take_recheck_s > 0:
-            # live-fidelity gate: a real order needs ~network + 250ms exchange
-            # hold to arrive; only fill if the ask is still there afterwards
-            # (~82% of instantly-visible asks are gone by then — audited).
-            # A failed recheck consumed an attempt, exactly like a missed FAK.
+        if self.cfg.snipe_take_recheck_s > 0 and self.cfg.mode != "live":
+            # PAPER-ONLY live-fidelity gate: a real order needs ~network + 250ms
+            # exchange hold to arrive; only fill if the ask is still there
+            # afterwards (~82% of instantly-visible asks are gone by then —
+            # audited). A failed recheck consumes an attempt, like a missed FAK.
+            # In live mode the latency is REAL, so the sleep must not run:
+            # the FAK goes out immediately and the exchange decides the race.
             await asyncio.sleep(self.cfg.snipe_take_recheck_s)
             st = self.clob.state(token)
             if (st is None or not st.book_fresh(self.cfg.book_max_age_s)

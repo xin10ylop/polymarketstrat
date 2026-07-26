@@ -89,10 +89,12 @@ class Config:
     snipe_poll_s: float = 0.05             # eval cadence in the final seconds: the median
                                            # qualifying ask survives ~142ms, so every 50ms
                                            # of reaction time is fill share in the race
-    # live-fidelity gate: after a signal, wait this long and require the ask to
-    # still be there before "filling" — simulates network latency + Polymarket's
-    # 250ms marketable-order hold. ~82% of paper's instant fills fail this test
-    # (audited); with it ON, paper P&L ~= what real money would capture. 0 = off.
+    # PAPER-ONLY live-fidelity gate (ignored when mode=live): after a signal,
+    # wait this long and require the ask to still be there before "filling" —
+    # simulates network latency + Polymarket's 250ms marketable-order hold.
+    # ~82% of paper's instant fills fail this test (audited); with it ON, paper
+    # P&L ~= what real money would capture. Live fires immediately: its latency
+    # is real, and an artificial pre-send wait would forfeit the race. 0 = off.
     snipe_take_recheck_s: float = _env("SNIPE_TAKE_RECHECK_S", 0.5, float)
     snipe_signal_lag_s: float = 1.0        # act on spot data at least 1s old (validated latency)
     snipe_fv_min: float = 0.995
