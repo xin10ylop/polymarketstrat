@@ -1,4 +1,10 @@
-"""Fetch Binance BTCUSDT 1s klines (daily zips) from data.binance.vision into data/binance/klines_1s/."""
+"""Fetch Binance 1s klines (daily zips) from data.binance.vision.
+
+    python3 scripts/binance_fetch.py 2026-07-13 2026-07-25 [SYMBOL]
+
+SYMBOL defaults to BTCUSDT (writes data/binance/klines_1s/ for compatibility);
+other symbols write data/binance/klines_1s_<coin>/.
+"""
 import io
 import os
 import sys
@@ -11,14 +17,15 @@ import pandas as pd
 import requests
 
 ROOT = os.path.join(os.path.dirname(__file__), "..")
-URL = "https://data.binance.vision/data/spot/daily/klines/BTCUSDT/1s/BTCUSDT-1s-{d}.zip"
+URL = "https://data.binance.vision/data/spot/daily/klines/{sym}/1s/{sym}-1s-{d}.zip"
 COLS = ["open_time", "open", "high", "low", "close", "volume", "close_time",
         "quote_volume", "n_trades", "taker_buy_base", "taker_buy_quote", "ignore"]
 NUM_WORKERS = 6
 
 
-def main(a, b):
-    outdir = os.path.join(ROOT, "data", "binance", "klines_1s")
+def main(a, b, sym="BTCUSDT"):
+    sub = "klines_1s" if sym == "BTCUSDT" else f"klines_1s_{sym[:-4].lower()}"
+    outdir = os.path.join(ROOT, "data", "binance", sub)
     os.makedirs(outdir, exist_ok=True)
     tasks = queue.Queue()
     d = date.fromisoformat(a)
@@ -43,7 +50,7 @@ def main(a, b):
                 return
             for attempt in range(4):
                 try:
-                    r = s.get(URL.format(d=ds), timeout=180)
+                    r = s.get(URL.format(sym=sym, d=ds), timeout=180)
                     if r.status_code == 404:
                         print(f"missing {ds}", flush=True)
                         break
@@ -81,4 +88,4 @@ def main(a, b):
 
 
 if __name__ == "__main__":
-    main(sys.argv[1], sys.argv[2])
+    main(sys.argv[1], sys.argv[2], sys.argv[3] if len(sys.argv) > 3 else "BTCUSDT")

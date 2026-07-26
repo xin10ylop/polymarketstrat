@@ -1,9 +1,12 @@
-"""Fetch the newest BTC 5m days (post-Jul-13) for the edge-freshness audit.
+"""Fetch the newest 5m up/down days for the edge-freshness audit.
 
-1. Gamma sweep: enumerate btc-updown-5m-<wts> slugs for the date range, pull
+    python3 scripts/freshness_fetch.py 2026-07-14 2026-07-25 [coin]
+
+1. Gamma sweep: enumerate <coin>-updown-5m-<wts> slugs for the date range, pull
    conditionId/outcomePrices -> mini windows table with official results.
 2. Telonex downloads: quotes+trades per resolved market (404 = not archived yet).
-Writes: data/fresh/windows_fresh.parquet, data/fresh/raw/{quotes,trades}/<day>/.
+Writes: data/fresh/windows_fresh[_<coin>].parquet, data/fresh/raw[_<coin>]/...
+(btc keeps the original un-suffixed paths).
 """
 import json
 import os
@@ -18,6 +21,8 @@ import pandas as pd
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 DATA = os.path.join(ROOT, "data")
 OUT = os.path.join(DATA, "fresh")
+COIN = (sys.argv[3] if len(sys.argv) > 3 else "btc").lower()
+SUF = "" if COIN == "btc" else f"_{COIN}"
 GAMMA = "https://gamma-api.polymarket.com/markets?slug={slug}&closed=true"  # closed=true: gamma hides old markets from plain slug queries
 TLX = "https://api.telonex.io/v1/downloads/polymarket/{channel}/{d}"
 
@@ -48,7 +53,7 @@ def gamma_sweep(d0, d1):
                 wts = tasks.get_nowait()
             except queue.Empty:
                 return
-            slug = f"btc-updown-5m-{wts}"
+            slug = f"{COIN}-updown-5m-{wts}"
             try:
                 req = urllib.request.Request(GAMMA.format(slug=slug),
                                              headers={"User-Agent": "fresh/1.0"})
@@ -77,9 +82,12 @@ def gamma_sweep(d0, d1):
     ths = [threading.Thread(target=worker) for _ in range(16)]
     [t.start() for t in ths]
     [t.join() for t in ths]
+    if not rows:
+        print(f"gamma sweep: 0 resolved windows for {COIN} {d0}..{d1}", flush=True)
+        return pd.DataFrame()
     df = pd.DataFrame(rows).sort_values("wts")
     os.makedirs(OUT, exist_ok=True)
-    df.to_parquet(os.path.join(OUT, "windows_fresh.parquet"), index=False)
+    df.to_parquet(os.path.join(OUT, f"windows_fresh{SUF}.parquet"), index=False)
     print(f"gamma sweep: {len(df)} resolved windows {d0}..{d1}", flush=True)
     return df
 
@@ -90,7 +98,7 @@ def tlx_fetch(df):
     tasks, n = queue.Queue(), 0
     for r in df.itertuples():
         for channel in ("quotes", "trades"):
-            out = os.path.join(OUT, "raw", channel, r.date, f"{r.slug}.parquet")
+            out = os.path.join(OUT, f"raw{SUF}", channel, r.date, f"{r.slug}.parquet")
             if not os.path.exists(out):
                 tasks.put((channel, r.date, r.slug, out))
                 n += 1
@@ -137,4 +145,5 @@ def tlx_fetch(df):
 if __name__ == "__main__":
     d0, d1 = sys.argv[1], sys.argv[2]
     df = gamma_sweep(d0, d1)
-    tlx_fetch(df)
+    if len(df):
+        tlx_fetch(df)
