@@ -17,14 +17,30 @@ class RiskManager:
         self._halts = {}
         self._started = time.time()
 
-    def halt(self, scope, reason):
+    def halt(self, scope, reason, until=None):
+        """until=None -> sticky (human restart required); otherwise the halt
+        lifts itself at that unix time (e.g. a daily breaker at next UTC day)."""
         if scope not in self._halts:
-            self._halts[scope] = reason
+            self._halts[scope] = (reason, until)
             self.ledger.event("HALT", f"{scope}: {reason}")
-            log.error("HALT %s: %s", scope, reason)
+            log.error("HALT %s: %s%s", scope, reason,
+                      f" (auto-lifts {time.strftime('%H:%M UTC', time.gmtime(until))})"
+                      if until else "")
+
+    def _scope_halted(self, scope):
+        h = self._halts.get(scope)
+        if h is None:
+            return False
+        reason, until = h
+        if until is not None and time.time() >= until:
+            del self._halts[scope]
+            self.ledger.event("HALT_LIFTED", f"{scope}: {reason}")
+            log.warning("halt lifted (%s): %s", scope, reason)
+            return False
+        return True
 
     def halted(self, scope):
-        if scope in self._halts or "all" in self._halts:
+        if self._scope_halted(scope) or self._scope_halted("all"):
             return True
         # transient: spot feed silent (only after startup warmup)
         if scope == "snipe" and time.time() - self._started > 60:
@@ -45,7 +61,9 @@ class RiskManager:
     def _check(self):
         pnl = self.ledger.realized_pnl_today()
         if pnl < -self.cfg.max_daily_loss:
-            self.halt("all", f"daily loss {pnl:.2f} < -{self.cfg.max_daily_loss}")
+            next_utc_day = (int(time.time() // 86400) + 1) * 86400
+            self.halt("all", f"daily loss {pnl:.2f} < -{self.cfg.max_daily_loss}",
+                      until=next_utc_day)   # a DAILY stop lifts with the new day
         tp, n = self.ledger.snipe_trailing_pnl(self.cfg.snipe_trailing_n)
         trail_floor = -self.cfg.snipe_trailing_pnl_frac * self.cfg.max_daily_loss
         if (n >= self.cfg.snipe_trailing_n and tp < trail_floor
