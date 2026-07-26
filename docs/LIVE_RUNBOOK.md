@@ -118,3 +118,14 @@ them in that order.
   stays OFF. Watch the 0.80-0.90 mid-band: if still negative at n~100, consider
   a mid-band skip. Trailing breaker fired correctly 07-24 01:45 (-$267 fast
   bleed) and was cleared by restart after this check.
+
+- 2026-07-26 EDGE-FRESHNESS AUDIT (independent of the bots): replayed the snipe
+  rules over 3,455 never-before-analyzed windows (Jul 14-25, Telonex ticks +
+  gamma official results, binance-proxy signal, 0.5s survival gate, first-touch
+  only): 376 opportunities (31/day), win 75.5%, +2.52c/sh weighted, +$1,056 at
+  <=250sh clips; 8 of 12 days positive. Deep band (<=0.80) independently
+  confirmed as the engine: +11.5c/sh. Top band (0.90-0.98) measured -2.2c here
+  vs +3.5c in the paper ledger over the same days — most likely proxy-oracle
+  noise (replica lacks the chainlink feed; marginal-window misclassification
+  penalizes the high-price band hardest); paper (true oracle) is the better
+  instrument there. WATCH both; no parameter changes.
