@@ -110,6 +110,10 @@ class Config:
     #   but live paper fills there still print +EV — let the paper ledger
     #   referee; flip to 0.90 if a week of deep fills bleeds (runbook item)
     snipe_eval_until_s: float = _env("SNIPE_EVAL_UNTIL_S", -1.5, float)
+    # no trades until the process is this old AND estimators are mature: the
+    # ten straight post-restart losers on Jul 24/26 point at signals fired on
+    # 30-60s-old vol/basis windows (garbage-confident cold starts)
+    snipe_warmup_s: float = _env("SNIPE_WARMUP_S", 120.0, float)
     # ^ stop evaluating this close to the bell: the final second is sharply
     #   -EV (-5.6c/sh) — late cheap offers know the last tick
     # retry/replace: keep re-firing while the signal persists, until the window

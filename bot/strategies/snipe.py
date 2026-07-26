@@ -34,6 +34,7 @@ class SnipeStrategy:
         self.retries = 0        # 2nd+ attempts within one window
         self.last_fv = None
         self._wstate = None     # (wts, {attempts, shares, cost}) per-window budget
+        self._started = time.time()
 
     async def run(self):
         T = self.cfg.window_secs
@@ -72,6 +73,12 @@ class SnipeStrategy:
             return True
         mk = self.clob.market_for(wts)
         if mk is None or self.oracle.degraded:
+            return False
+        # cold-start guard: immature vol/basis estimators produce
+        # garbage-confident signals in the first minutes after a (re)start
+        if (time.time() - self._started < self.cfg.snipe_warmup_s
+                or len(self.spot.basis_samples) < 45):
+            self.no_data += 1
             return False
         # exact open print from the resolution feed (tolerate <=2s backfill lag)
         k = self.oracle.price_at(wts, exact=True, tolerance=2)

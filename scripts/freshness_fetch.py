@@ -18,7 +18,7 @@ import pandas as pd
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 DATA = os.path.join(ROOT, "data")
 OUT = os.path.join(DATA, "fresh")
-GAMMA = "https://gamma-api.polymarket.com/markets?slug={slug}"
+GAMMA = "https://gamma-api.polymarket.com/markets?slug={slug}&closed=true"  # closed=true: gamma hides old markets from plain slug queries
 TLX = "https://api.telonex.io/v1/downloads/polymarket/{channel}/{d}"
 
 
