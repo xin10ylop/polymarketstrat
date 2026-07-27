@@ -96,8 +96,9 @@ def tlx_fetch(df):
     load_env()
     key = os.environ["TELONEX_API_KEY"]
     tasks, n = queue.Queue(), 0
+    channels = tuple(os.environ.get("FRESH_CHANNELS", "quotes,trades").split(","))
     for r in df.itertuples():
-        for channel in ("quotes", "trades"):
+        for channel in channels:
             out = os.path.join(OUT, f"raw{SUF}", channel, r.date, f"{r.slug}.parquet")
             if not os.path.exists(out):
                 tasks.put((channel, r.date, r.slug, out))
