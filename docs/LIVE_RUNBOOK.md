@@ -138,6 +138,23 @@ them in that order.
   qualification gate is HARD — no live shortcut on a pretty paper week; add a
   price-band bucket check to their weekly watch (deep band especially for SOL);
   no parameter changes to the paper bots (they are the referee).
+  ADDENDUM (same day) — instrument validity MEASURED, divergence resolved:
+  (a) quote staleness ruled out: replica entry quotes are fresh on all coins
+  (p90 age <=0.8s); an age<=3s filter and a +1-sigma signal margin change
+  nothing qualitatively (btc stays positive in all variants, eth/sol negative).
+  (b) 15-min live capture of chainlink (resolution truth) vs the binance
+  stand-in, per coin, 3s decision horizon: |basis-change| p90 as a fraction of
+  the fv signal threshold = BTC 0.41, ETH 0.42, SOL 1.03. SOL's stand-in noise
+  EQUALS the signal itself -> the replica is BLIND on SOL; its -$702 is
+  instrument artifact, corroborated by fire-rate (replica 6.7/day vs true-feed
+  bot 2.4/day = phantom signals). For BTC/ETH the instrument is usable but
+  understates the true-feed bot by ~4c/sh (BTC calibration: replica +2.5 vs bot
+  +6.6). Applying that to ETH's replica -0.4c/sh -> consistent with a real
+  positive edge, weaker external confirmation than BTC's.
+  FINAL: BTC GO unchanged. ETH on track — complete the 2-week gate (~Aug 2)
+  + band buckets, then eligible for its own Tier 0. SOL: replica cannot
+  referee it and bot n=22 is too small — extend paper qualification until
+  n>=60-100 fills before any live decision. No parameter changes.
 
 - 2026-07-26 EDGE-FRESHNESS AUDIT (independent of the bots): replayed the snipe
   rules over 3,455 never-before-analyzed windows (Jul 14-25, Telonex ticks +
