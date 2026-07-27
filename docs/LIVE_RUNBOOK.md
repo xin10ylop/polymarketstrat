@@ -149,6 +149,21 @@ them in that order.
   runs 4 bots — check free -m first; upgrade droplet before adding, or skip).
   Their realistic full-size ceilings are ~$5-20/day each given thin volume.
   Fleet priorities unchanged: btc live > eth gate (~Aug 2) > sol sample > this.
+  FINAL (same day, 41-day extended sample Jun 15-Jul 25, ~11.8k windows/coin,
+  specialized-band bot simulation + day-block bootstrap):
+    XRP: NO-GO (stands — all bands negative on a valid instrument).
+    BNB: NO-GO — CLOSED. The 12-day deep-band +17.6c halved to +10.1c at n=64,
+      and the honest deep-only bot simulation prints +1.63c/sh with a CI of
+      [-13.9c, +15.7c], P(EV<=0)=40.5%, ~$2/day ceiling. Small-sample mirage;
+      not worth a bot slot. Do not revisit without a new reason.
+    DOGE: GO for a PAPER experiment — top-band-only bot [0.90,0.97] over 41
+      days: 185 entries (4.5/day), win 97.8%, +2.03c/sh on an instrument that
+      understates by ~4c (btc calibration), 35/38 days positive,
+      P(EV<=0)=14.6%. True edge plausibly +4-6c/sh, ceiling ~$6-15/day.
+      Deploy: bot/deploy/polybot-snipe-doge.service (SNIPE_PRICE_FLOOR=0.90 is
+      the strategy — deep/mid doge bands are -5 to -7c). PAPER ONLY; its own
+      2-week gate + band bucket check before any live thought. Add only if
+      free -m shows >=150MB headroom on the droplet (or after a resize).
 
 - 2026-07-27 ETH/SOL EDGE-FRESHNESS AUDIT (same replica as BTC's, Jul 14-25):
   the proxy replay could NOT confirm the eth/sol edges the way it confirmed
