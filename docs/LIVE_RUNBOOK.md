@@ -122,6 +122,23 @@ them in that order.
   a mid-band skip. Trailing breaker fired correctly 07-24 01:45 (-$267 fast
   bleed) and was cleared by restart after this check.
 
+- 2026-07-27 ETH/SOL EDGE-FRESHNESS AUDIT (same replica as BTC's, Jul 14-25):
+  the proxy replay could NOT confirm the eth/sol edges the way it confirmed
+  btc's. ETH: 171 opps (14.2/day), win 80.1%, -0.44c/sh, -$52 (deep band +7.7c
+  but only 54% win; mid -14.1c; top -0.5c). SOL: 80 opps (6.7/day), win 81.2%,
+  -9.87c/sh, -$702 (deep band -31.4c at 53% win = the whole loss). Binance-proxy
+  direction accuracy is NOT the issue (~5% miscalls overall, ~0% on decided
+  windows); the failure mode is marginal-window fv confidence, hypersensitive
+  to proxy-vs-chainlink basis in the final seconds. Meanwhile the true-feed
+  paper bots printed ETH +$342/85.1%/+8.3c (101 fills, 7/7 days positive) and
+  SOL +$187/95.5%/+10.0c (22 fills, 5/5 days positive), zero mismatches.
+  READ: for BTC the edge was strong enough to survive the blunt proxy
+  instrument; for eth/sol it is not (proxy noise and/or genuinely informed deep
+  asks on thinner books). VERDICT: eth/sol remain paper-only and their 2-week
+  qualification gate is HARD — no live shortcut on a pretty paper week; add a
+  price-band bucket check to their weekly watch (deep band especially for SOL);
+  no parameter changes to the paper bots (they are the referee).
+
 - 2026-07-26 EDGE-FRESHNESS AUDIT (independent of the bots): replayed the snipe
   rules over 3,455 never-before-analyzed windows (Jul 14-25, Telonex ticks +
   gamma official results, binance-proxy signal, 0.5s survival gate, first-touch
