@@ -122,6 +122,34 @@ them in that order.
   a mid-band skip. Trailing breaker fired correctly 07-24 01:45 (-$267 fast
   bleed) and was cleared by restart after this check.
 
+- 2026-07-27 NEW-COIN EXPLORATION (xrp/doge/bnb — the only other coins with
+  updown-5m markets; ada/link/ltc/avax/sui/pepe/shib/trx/matic have none).
+  Liquidity (median $ volume/window, 50-window sample): btc $57.8k, eth $5.2k,
+  sol $1.8k, xrp $618, doge $335, bnb $161 — new coins are 90-350x thinner than
+  btc; capacity is small even if an edge exists. Feed validity (15-min live
+  chainlink-vs-binance, p90 basis-change / signal threshold): bnb 0.37 (cleanest
+  of all 6), btc 0.44 (control, replicates), xrp 0.60, doge 0.67 — all three
+  new coins have working chainlink streams and NONE is SOL-blind (1.03), so the
+  replica verdicts below are meaningful (with the known ~4c/sh understatement
+  measured on btc). Replica replay Jul 14-25 at <=250sh clips:
+    XRP: 143 opps (11.9/d), win 76.9%, -10.9c/sh, -$1,217; ALL bands negative
+      (deep -24.6c at 42% win, mid -13.6c, top -4.2c). NO-GO — dead even after
+      bias correction.
+    DOGE: 100 opps (8.3/d), win 81.0%, -1.9c/sh, -$87; deep -10.3c (41% win),
+      mid -6.3c, BUT top band (0.90-0.98) +3.0c at 98% win on n=56 — positive
+      DESPITE the blurriest instrument. Bias-corrected overall ~breakeven to
+      positive. CANDIDATE for a paper-bot experiment.
+    BNB: 159 opps (13.2/d), win 76.7%, -6.6c/sh, -$589; deep band +17.6c
+      (n=34) — btc-like engine — but mid -37.6c and top -9.9c with the CLEANEST
+      instrument. Mixed. CANDIDATE for a paper-bot experiment; if the pattern
+      holds on the true feed, bnb would want a price CEILING near 0.80 (inverted
+      from the usual floor logic).
+  DECISION: no live candidacy for any new coin. Optional cheap experiments:
+  paper bots for doge and bnb (NOT xrp) if droplet RAM allows (512MB already
+  runs 4 bots — check free -m first; upgrade droplet before adding, or skip).
+  Their realistic full-size ceilings are ~$5-20/day each given thin volume.
+  Fleet priorities unchanged: btc live > eth gate (~Aug 2) > sol sample > this.
+
 - 2026-07-27 ETH/SOL EDGE-FRESHNESS AUDIT (same replica as BTC's, Jul 14-25):
   the proxy replay could NOT confirm the eth/sol edges the way it confirmed
   btc's. ETH: 171 opps (14.2/day), win 80.1%, -0.44c/sh, -$52 (deep band +7.7c
