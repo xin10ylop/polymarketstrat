@@ -72,7 +72,7 @@ class SnipeStrategy:
                 or w["cost"] >= self.cfg.snipe_window_max_cost):
             return True
         mk = self.clob.market_for(wts)
-        if mk is None or self.oracle.degraded:
+        if mk is None or self.oracle.degraded or not self.oracle.clock_ok():
             return False
         # cold-start guard: immature vol/basis estimators produce
         # garbage-confident signals in the first minutes after a (re)start
@@ -134,7 +134,13 @@ class SnipeStrategy:
                         (self.cfg.snipe_window_max_cost - w["cost"]) / max(st.best_ask, 0.01))
         if w["attempts"] == 1:
             remaining = min(remaining, self.cfg.snipe_first_clip)
-        order = self.exec.take(wts, "snipe", token, self.cfg.snipe_ask_max, remaining)
+        if self.cfg.mode == "live":
+            # exchange I/O off the event loop: a blocking POST in here would
+            # blind every feed during the most latency-critical seconds
+            order = await asyncio.to_thread(
+                self.exec.take, wts, "snipe", token, self.cfg.snipe_ask_max, remaining)
+        else:
+            order = self.exec.take(wts, "snipe", token, self.cfg.snipe_ask_max, remaining)
         if order:
             self.signals += 1
             w["shares"] += order.filled

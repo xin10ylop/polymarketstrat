@@ -10,7 +10,13 @@ EnvironmentFile=/etc/polybot/live.env
 ExecStart=/opt/polymarketstrat/venv/bin/python -m bot.main
 Restart=always
 RestartSec=10
-MemoryMax=200M
+# a config error must STOP the unit, not crash-loop forever hammering the API
+StartLimitIntervalSec=600
+StartLimitBurst=5
+# live imports (aiohttp + py_clob_client_v2) alone are ~60MB RSS; 200M risked
+# an OOM-kill -> Restart=always loop
+MemoryMax=300M
+NoNewPrivileges=true
 
 [Install]
 WantedBy=multi-user.target

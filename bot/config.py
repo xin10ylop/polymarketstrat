@@ -164,6 +164,10 @@ class Config:
     bankroll: float = _env("BANKROLL", 0.0, float)            # dollars; required in live
     live_per_trade_frac: float = _env("LIVE_PER_TRADE_FRAC", 0.10, float)
     live_daily_stop_frac: float = _env("LIVE_DAILY_STOP_FRAC", 0.20, float)
+    # cumulative (lifetime) live drawdown -> sticky halt; catches a dead edge
+    # bleeding one daily-stop at a time, which the daily/trailing breakers
+    # individually never see (audit 2026-07-30 finding #7)
+    live_max_drawdown_frac: float = _env("LIVE_MAX_DRAWDOWN_FRAC", 0.5, float)
     live_max_trades_day: int = _env("LIVE_MAX_TRADES_DAY", 40, int)
     pm_signature_type: int = _env("PM_SIGNATURE_TYPE", 1, int)  # 1=email/Magic, 2=browser proxy
     pm_private_key: str = _env("PM_PRIVATE_KEY", "")

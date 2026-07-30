@@ -61,9 +61,19 @@ class RiskManager:
     def _check(self):
         pnl = self.ledger.realized_pnl_today()
         if pnl < -self.cfg.max_daily_loss:
+            # paper: a DAILY stop lifts with the new day. live: STICKY — real
+            # money resumes only when a human restarts (audit 2026-07-30 #7).
             next_utc_day = (int(time.time() // 86400) + 1) * 86400
             self.halt("all", f"daily loss {pnl:.2f} < -{self.cfg.max_daily_loss}",
-                      until=next_utc_day)   # a DAILY stop lifts with the new day
+                      until=None if self.cfg.mode == "live" else next_utc_day)
+        if self.cfg.mode == "live":
+            # cumulative drawdown: a dead edge losing one daily-stop at a time
+            # never trips the daily/trailing breakers individually; this does.
+            lt = self.ledger.lifetime_pnl()
+            dd_floor = -self.cfg.live_max_drawdown_frac * self.cfg.bankroll
+            if lt < dd_floor:
+                self.halt("all", f"cumulative pnl {lt:.2f} < {dd_floor:.2f} "
+                          f"({self.cfg.live_max_drawdown_frac:.0%} of bankroll)")
         tp, n = self.ledger.snipe_trailing_pnl(self.cfg.snipe_trailing_n)
         trail_floor = -self.cfg.snipe_trailing_pnl_frac * self.cfg.max_daily_loss
         if (n >= self.cfg.snipe_trailing_n and tp < trail_floor
@@ -71,7 +81,10 @@ class RiskManager:
                      >= self.cfg.snipe_trailing_rearm_fills)):
             self.halt("snipe", f"trailing {n}-fill pnl {tp:.2f} < {trail_floor:.2f}")
         if self.ledger.mismatches() > 0:
-            self.halt("toll", "oracle/exchange winner mismatch detected")
+            # scope "all": a mismatch means our oracle read disagrees with the
+            # exchange — EVERY strategy must stop, not just the toll (which is
+            # not even running in live; audit 2026-07-30 finding #6)
+            self.halt("all", "oracle/exchange winner mismatch detected")
         if self.ledger.unmarked_old_fills() > self.cfg.max_unmarked_fills:
             self.halt("all", "settlement reconciler falling behind "
                       f"({self.ledger.unmarked_old_fills()} unmarked fills)")

@@ -24,9 +24,12 @@ from bot.strategies.toll import TollStrategy
 log = logging.getLogger("main")
 
 
-async def reconciler(cfg, clob, ledger, toll):
+async def reconciler(cfg, clob, ledger, toll, oracle):
     """Post-settlement truth: fetch each window's official outcome from gamma,
-    mark PnL, and compare with the toll's own oracle call."""
+    mark PnL, and compare with OUR OWN oracle read of the window. The oracle
+    winner is computed here directly from the resolution feed (not via the
+    toll strategy) so the mismatch tripwire works even when the toll is
+    disabled — which is exactly the live configuration (audit 2026-07-30 #6)."""
     done = set()
     while True:
         now = time.time()
@@ -40,6 +43,11 @@ async def reconciler(cfg, clob, ledger, toll):
                     ledger.event("no_outcome", mk.slug)
                 continue
             oracle_winner = toll.oracle_calls.get(wts)
+            if oracle_winner is None:
+                k_open = oracle.price_at(wts, exact=True, tolerance=2)
+                k_close = oracle.price_at(wts + cfg.window_secs, exact=True)
+                if k_open is not None and k_close is not None:
+                    oracle_winner = "up" if k_close >= k_open else "down"
             mismatch = ledger.record_settlement(
                 wts, winner, oracle_winner,
                 token_of=lambda w, m=mk: m.token_up if w == "up" else m.token_down)
@@ -80,16 +88,18 @@ async def amain():
     spot = SpotFeed(CFG)
     oracle = Oracle(CFG, spot=spot)
     spot.oracle_ref = oracle
-    reconciler_task = None
+    risk = RiskManager(CFG, ledger, oracle, spot)
+    reconciler_task = prewarm_task = None
     if CFG.mode == "live":
-        from bot.engine.live import Bankroll, LiveExecutor, balance_reconciler
+        from bot.engine.live import (Bankroll, LiveExecutor, balance_reconciler,
+                                     prewarm_loop)
         bankroll = Bankroll(CFG)
         CFG.max_daily_loss = bankroll.daily_stop     # risk breaker scales with bankroll
-        executor = LiveExecutor(CFG, clob, ledger, bankroll)
-        reconciler_task = balance_reconciler(CFG, ledger, executor)
+        executor = LiveExecutor(CFG, clob, ledger, bankroll, risk)
+        reconciler_task = balance_reconciler(CFG, ledger, executor, risk)
+        prewarm_task = prewarm_loop(clob, executor)
     else:
         executor = PaperExecutor(CFG, clob, ledger)
-    risk = RiskManager(CFG, ledger, oracle, spot)
     toll = TollStrategy(CFG, clob, oracle, spot, executor, ledger, risk)
     snipe = SnipeStrategy(CFG, clob, oracle, spot, executor, ledger, risk)
 
@@ -102,11 +112,13 @@ async def amain():
         asyncio.create_task(risk.run(), name="risk"),
         asyncio.create_task(toll.run(), name="toll"),
         asyncio.create_task(snipe.run(), name="snipe"),
-        asyncio.create_task(reconciler(CFG, clob, ledger, toll), name="reconciler"),
+        asyncio.create_task(reconciler(CFG, clob, ledger, toll, oracle), name="reconciler"),
         asyncio.create_task(status(CFG, ledger, oracle, spot, clob, toll, snipe), name="status"),
     ]
     if reconciler_task is not None:
         tasks.append(asyncio.create_task(reconciler_task, name="balance-reconciler"))
+    if prewarm_task is not None:
+        tasks.append(asyncio.create_task(prewarm_task, name="prewarm"))
     stop = asyncio.Event()
     loop = asyncio.get_running_loop()
     for sig in (signal.SIGINT, signal.SIGTERM):

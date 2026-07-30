@@ -30,7 +30,11 @@ CREATE TABLE IF NOT EXISTS events(ts REAL, kind TEXT, detail TEXT);
 class Ledger:
     def __init__(self, cfg):
         os.makedirs(cfg.data_dir, exist_ok=True)
-        self.db = sqlite3.connect(os.path.join(cfg.data_dir, "paper.db"))
+        # check_same_thread=False: in live mode the order path runs in a worker
+        # thread (asyncio.to_thread) so the event loop never blocks on exchange
+        # I/O; sqlite serializes cross-thread writes internally (WAL + timeout).
+        self.db = sqlite3.connect(os.path.join(cfg.data_dir, "paper.db"),
+                                  check_same_thread=False, timeout=10)
         self.db.execute("PRAGMA journal_mode=WAL")
         self.db.execute("PRAGMA synchronous=NORMAL")
         self.db.executescript(_SCHEMA)
@@ -112,6 +116,10 @@ class Ledger:
         return self.db.execute(
             "SELECT COUNT(*) FROM fills WHERE strategy LIKE 'snipe%' "
             "AND pnl IS NOT NULL AND ts > ?", (row[0],)).fetchone()[0]
+
+    def lifetime_pnl(self):
+        return self.db.execute(
+            "SELECT COALESCE(SUM(pnl),0) FROM fills").fetchone()[0]
 
     def mismatches(self):
         return self.db.execute(

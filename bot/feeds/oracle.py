@@ -120,6 +120,17 @@ class Oracle:
     def staleness(self):
         return time.time() - self.last_rx if self.last_rx else float("inf")
 
+    def clock_ok(self):
+        """Free runtime clock-skew guard: the feed's sample second is stamped
+        by the server on the 1s grid, so (local receive time - sample second)
+        normally sits in [0, ~2]s. A drifting local clock shifts it. Outside a
+        generous band, refuse to trade — the strategy's whole timing model
+        (eval window, the -1.5s cutoff) rides on the local clock."""
+        if not self.last_rx:
+            return False
+        lag = self.last_rx - self.last_sample_s
+        return -0.75 <= lag <= 3.0
+
     @property
     def degraded(self):
         return self.staleness() > self.cfg.oracle_max_staleness_s

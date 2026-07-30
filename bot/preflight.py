@@ -58,9 +58,12 @@ async def main():
             results.append((False, f"coinbase: {e}"))
         # resolution feed: Polymarket's chainlink data-stream ws
         try:
+            # compact separators REQUIRED: the server routes updates by exact
+            # filter-string match; spacey JSON gets backfill but zero updates
             sub = {"action": "subscribe", "subscriptions": [{
                 "topic": "crypto_prices_chainlink", "type": "update",
-                "filters": json.dumps({"symbol": CFG.pm_price_symbol})}]}
+                "filters": json.dumps({"symbol": CFG.pm_price_symbol},
+                                      separators=(",", ":"))}]}
             async with s.ws_connect(CFG.pm_live_ws, heartbeat=10) as ws:
                 await ws.send_json(sub)
                 got = None

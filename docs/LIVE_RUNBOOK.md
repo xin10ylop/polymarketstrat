@@ -18,25 +18,29 @@ in REPORT.md; this file is only about running real money safely.
   real matched size/price recorded from the exchange response), Bankroll
   (manual `BANKROLL` only — the bot NEVER sizes off the account balance),
   hourly spend-side balance reconciler (halts on unexplained shortfall).
-- Retry policy: up to `SNIPE_MAX_ATTEMPTS=4` takes per window while the signal
+- Retry policy: up to `SNIPE_MAX_ATTEMPTS=3` takes per window while the signal
   persists, capped by clip (250 sh), per-window cost (`SNIPE_WINDOW_MAX_COST`)
   and bankroll per-trade cap. A missed FAK costs nothing and is retried.
 - Three locks before any real order (ALL must be opened deliberately):
   1. `BOT_MODE=live` + `BANKROLL>0` + `PM_PRIVATE_KEY` present
-  2. `LIVE_CONFIRM=I-UNDERSTAND-REAL-MONEY`
-  3. `LIVE_SHADOW=0` (default is 1 = signs+sizes but never posts)
+  2. `LIVE_CONFIRM=I-UNDERSTAND-REAL-MONEY` (needed only to POST; shadow runs
+     without it)
+  3. `LIVE_SHADOW=0` (default is 1 = full pipeline INCLUDING signing, no posts)
 
 ## Money rules (enforced in code, not by discipline)
 
 | Rule | Value | Where |
 |---|---|---|
-| Per-trade cost | ≤ 10% of bankroll | live.py per_trade_cap |
+| Per-trade cost | ≤ 10% of bankroll AT THE LIMIT PRICE (worst-case sweep) | live.py cap_sz + overspend tripwire |
 | Position at a time | 1 | live.py _in_flight |
 | Per-take size | ≤ 250 shares (audited: bigger = −EV) | config snipe_max_clip |
 | Per-window cost | ≤ $300 across retries | config snipe_window_max_cost |
-| Daily stop | −20% of bankroll → sticky halt | risk.py via bankroll |
-| Trades/day | ≤ 40 | live.py |
+| Daily stop | −20% of bankroll → STICKY halt in live (human restart) | risk.py via bankroll |
+| Cumulative stop | −50% of bankroll lifetime → sticky halt | risk.py live_max_drawdown_frac |
+| Trades/day | ≤ 40 (persisted across restarts) | live.py |
 | Live strategies | snipe only (toll NOT live-qualified) | LIVE_STRATEGIES |
+| Ambiguous fill | booked worst-case + sticky halt (never dropped) | live.py _parse_fill |
+| Reconciler shortfall | sticky halt via RiskManager (not just a log line) | live.py balance_reconciler |
 
 ## The bankroll ladder (manual; reviewed weekly, move ONE rung)
 
@@ -56,16 +60,27 @@ zero-incident week; down one rung after a losing week. Change = edit
    /etc/polybot/live.env && chmod 600 /etc/polybot/live.env`; owner fills
    PM_PRIVATE_KEY / PM_FUNDER on the server keyboard, never via chat/email.
 3. **Shadow 24–48h**: install `bot/deploy/polybot-live-btc.service`, start with
-   `LIVE_SHADOW=1`. Verify in journal: `[SHADOW] would take ...` lines at
-   sensible sizes, balance readable at startup, zero errors. Compare shadow
-   takes against the NYC paper bot's fills for the same windows — they should
-   largely agree.
-4. **Tier 0**: set `LIVE_SHADOW=0`, `LIVE_CONFIRM=I-UNDERSTAND-REAL-MONEY`,
+   `LIVE_SHADOW=1` (LIVE_CONFIRM not needed for shadow). Shadow SIGNS every
+   order it would send — so it validates credentials, signature type, funder,
+   tick-size and neg-risk resolution, not just the signal pipeline. Verify in
+   journal: `[SHADOW] signed+would take ...` lines at sensible sizes, balance
+   readable at startup, zero errors. Compare shadow takes against the NYC
+   paper bot's fills for the same windows — they should largely agree.
+4. **Before flipping real**: in the Polymarket UI confirm the account's actual
+   signature type (Settings) matches PM_SIGNATURE_TYPE, and enable
+   "Auto redeem your wins" — unredeemed winnings are NOT buying power, and a
+   bot that can't buy looks identical to a bot that can't fill.
+5. **Tier 0**: set `LIVE_SHADOW=0`, `LIVE_CONFIRM=I-UNDERSTAND-REAL-MONEY`,
    `BANKROLL=150`. Restart. 3–5 days. The goals are MEASUREMENTS, not profit:
-   real fill-through rate vs paper's gate (expect roughly parity), the actual
-   fee charged on fills (expect $0 maker / 0.07·p·(1−p) taker), zero
-   reconciler alerts.
-5. **Ladder** per the table above. Keep the paper fleet running forever as the
+   (a) real fill-through rate vs paper's gate (expect roughly parity);
+   (b) THE decisive one — for each fill compare realized avg price vs the
+   triggering best ask (`grep live_forensics` + LIVE FILL lines): if live's
+   average entry sits near the 0.97 limit while the triggering asks were deep,
+   the deep-band edge is a sweep artifact and the strategy must stop;
+   (c) actual fee charged (expect 0.07·p·(1−p) taker); (d) zero reconciler
+   alerts. Emergency exit: `systemctl stop polybot-live-btc`, redeem in the
+   UI, withdraw USDC to your own wallet — nothing in the repo moves funds.
+6. **Ladder** per the table above. Keep the paper fleet running forever as the
    control group; investigate any paper-vs-live divergence before sizing up.
 
 ## Redemption (v1: manual)
@@ -113,6 +128,34 @@ them in that order.
   SNIPE_MAX_ATTEMPTS to 2.
 
 ### Reading log (append each check)
+
+- 2026-07-30 EXTERNAL ADVERSARIAL AUDIT (independent Opus-model auditor,
+  full code + docs read; verdict NO-GO) — 19 findings, 5 critical, ALL
+  verified against the code and ALL blockers fixed the same day:
+  #1 reconciler "halt" only wrote a ledger row nothing read -> now trips a
+  real sticky RiskManager halt; #2 confirmed-but-ambiguous order responses
+  (matched/delayed/tradeIDs without parseable amounts) were booked as misses
+  -> now booked as worst-case provisional fills + sticky halt; #3 per-trade
+  cap was computed at best_ask while the FAK sweeps to the 0.97 limit (could
+  spend ~5x cap) -> cap now at limit price + post-fill overspend tripwire;
+  #4 post_order blocked the event loop up to 30s polling trade hashes -> live
+  takes run in a worker thread + poll bounded to 2s + tick/neg-risk caches
+  prewarmed at discovery; #5 shadow phase couldn't start (LIVE_CONFIRM
+  required in constructor) -> confirm now required only to POST, shadow signs
+  orders (exercising creds/allowances), StartLimit added so config errors
+  stop the unit instead of crash-looping. Also fixed: mismatch tripwire now
+  works with toll disabled and halts ALL strategies (#6); daily stop sticky
+  in live + new cumulative -50% bankroll sticky stop (#7); trades/day cap
+  persisted across restarts (#14); runtime clock-skew guard from the oracle's
+  server-stamped samples (#13); reconciler math measures since-process-start
+  and aborts startup on unreadable/short balance (#12); fill-forensics
+  logging for the Tier-0 sweep-artifact test (per the auditor's edge
+  challenge); preflight filter fix (#17); service MemoryMax 300M +
+  StartLimit + NoNewPrivileges (#19); _NullOrder attrs (#16); runbook/table
+  drift corrected (#15). REMAINING accepted risks, monitored not fixed:
+  paper's sweep assumption may overstate deep-band capture (Tier-0 forensics
+  measurement decides, ~20 fills); user-channel ws still unwired (v2 item);
+  redemption manual until "Auto redeem" is enabled in the UI (step 4).
 
 - 2026-07-24 (BTC paper, lifetime to date): <=0.80: 117 fills +$1,369 (+16.5c/sh);
   0.80-0.90: 40 fills -$79 (-3.0c/sh, NOT significant at n=40); 0.90-0.98:
