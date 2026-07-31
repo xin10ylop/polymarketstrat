@@ -109,7 +109,11 @@ class Config:
     # Sparse-tape guards (audit F1/F3, SOL): refuse bars older than this,
     # and require the barrier to exceed N spot ticks — below the input
     # resolution, a 99.5% fv is model confidence, not market information.
-    spot_max_bar_age_s: float = _env("SPOT_MAX_BAR_AGE_S", 2.0, float)
+    # 5.0: with tau now computed FROM the bar's own second (the real F1 fix),
+    # an older bar is priced at its true horizon — the cutoff only guards
+    # against unrepresentative bars. 2.0 was over-tight: it rejected ~40% of
+    # BTC evals on ordinary 2-3s trade lulls (measured live, nm diagnostic).
+    spot_max_bar_age_s: float = _env("SPOT_MAX_BAR_AGE_S", 5.0, float)
     spot_tick: float = _env("SPOT_TICK", 0.01, float)
     snipe_min_ticks: float = _env("SNIPE_MIN_TICKS", 3.0, float)
     snipe_fv_min: float = _env("SNIPE_FV_MIN", 0.995, float)
