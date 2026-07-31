@@ -144,6 +144,19 @@ them in that order.
   Also catalogued for later: hourly SOL/XRP, daily up/down on stocks
   (TSLA/AAPL/...), forex, metals, indices — none tape-tested yet.
 
+- 2026-07-31 TAPE-vs-BOT EMPIRICAL RECONCILIATION (audit track 3): replayed
+  research tapes on days where live paper bots have actuals, independent data
+  paths (tape: Binance-proxy signal + Telonex archive; bot: Coinbase+oracle
+  live feeds). BTC-5m 8 clean days: tape +$1,014 vs bot +$2,039, daily corr
+  0.51, mostly same-sign. ETH-5m week: tape -$177 vs bot +$282. CONCLUSION:
+  tapes are systematically PESSIMISTIC vs real-feed bots (proxy-signal noise
+  is asymmetrically punished: wrong entry ~-90c vs right entry ~+8c), and
+  day-level tape numbers are noisy (corr ~0.5). Policy confirmed: tapes SCOUT
+  (their positives are likely conservative floors), paper bots DECIDE, gates
+  stay mandatory. btc15's +$186 first day: Telonex archive is T+1, direct
+  quote-level verification queued for tomorrow (raw_15m 2026-07-31 fetch 404
+  today; windows resolved list already pulled, 44 windows).
+
 - 2026-07-31 DEPTH RECORDER shipped (all snipe bots): every take attempt now
   logs a 'depth' event — top-5 ask ladder at signal time AND after the 0.5s
   latency gate, plus filled qty. Passive (zero behavior change; report
