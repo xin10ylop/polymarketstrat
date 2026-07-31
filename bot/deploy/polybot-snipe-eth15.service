@@ -15,13 +15,13 @@ Environment=FAMILY=15m
 Environment=WINDOW_SECS=900
 Environment=SLUG_PREFIX=eth-updown-15m
 Environment=TOLL_ENABLED=0
-# tape evidence (Jun 30-Jul 30): bot-as-is flat on eth-15m; fv>=0.999 was the
-# one both-halves-positive config (+12.4c/sh, n=37) — that IS the experiment
-Environment=SNIPE_FV_MIN=0.999
+# Runs DEFAULT signal settings (audit round 3 demolished the fv=0.999 tape
+# claim: 4 lucky large fills carried it, CI spans zero, and the runbook's own
+# law says never tune eth off the replica). Neutral true-feed evidence only.
 Environment=SNIPE_WARMUP_S=1800
 Environment=SNIPE_MAX_CLIP=500
 Environment=SNIPE_WINDOW_MAX_COST=500
-Environment=MAX_DAILY_LOSS=600
+Environment=MAX_DAILY_LOSS=650
 Environment=BOT_DATA_DIR=/opt/polymarketstrat/bot/data/snipe-eth15
 Environment=LOG_LEVEL=INFO
 ExecStart=/opt/polymarketstrat/venv/bin/python -m bot.main

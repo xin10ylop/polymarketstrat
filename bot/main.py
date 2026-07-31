@@ -34,7 +34,9 @@ async def reconciler(cfg, clob, ledger, toll, oracle):
     while True:
         now = time.time()
         for wts, mk in list(clob.markets.items()):
-            if wts in done or now < wts + cfg.window_secs + 40:
+            # grace must outlive the toll's fill-polling horizon (cancel at
+            # +55s): settling earlier strands late maker fills unmarked forever
+            if wts in done or now < wts + cfg.window_secs + max(60, cfg.toll_cancel_after_s + 10):
                 continue
             winner = await clob.fetch_outcome(mk)
             if winner is None:
@@ -172,6 +174,15 @@ async def amain():
     toll = TollStrategy(CFG, clob, oracle, spot, executor, ledger, risk)
     snipe = SnipeStrategy(CFG, clob, oracle, spot, executor, ledger, risk)
 
+    if CFG.slug_style == "et_hourly" and CFG.window_secs != 3600:
+        raise SystemExit("CONFIG ERROR: SLUG_STYLE=et_hourly requires WINDOW_SECS=3600 "
+                         "(endDate coincidences would bind wrong markets)")
+    if CFG.mode == "live" and ledger.db.execute(
+            "SELECT COUNT(*) FROM orders WHERE mode LIKE 'paper%'").fetchone()[0]:
+        raise SystemExit("CONFIG ERROR: live mode on a ledger containing paper fills "
+                         "— risk breakers would read paper PnL. Use a fresh BOT_DATA_DIR.")
+    import bot.engine.executor as _exmod
+    _exmod._ids = __import__("itertools").count(max(ledger.max_order_id() + 1, 1))
     ledger.event("start", f"mode={CFG.mode} spot={CFG.spot_feed}")
     tasks = [
         asyncio.create_task(clob.ws_loop(), name="clob-ws"),

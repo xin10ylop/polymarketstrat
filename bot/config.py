@@ -106,6 +106,12 @@ class Config:
     # is real, and an artificial pre-send wait would forfeit the race. 0 = off.
     snipe_take_recheck_s: float = _env("SNIPE_TAKE_RECHECK_S", 0.5, float)
     snipe_signal_lag_s: float = 1.0        # act on spot data at least 1s old (validated latency)
+    # Sparse-tape guards (audit F1/F3, SOL): refuse bars older than this,
+    # and require the barrier to exceed N spot ticks — below the input
+    # resolution, a 99.5% fv is model confidence, not market information.
+    spot_max_bar_age_s: float = _env("SPOT_MAX_BAR_AGE_S", 2.0, float)
+    spot_tick: float = _env("SPOT_TICK", 0.01, float)
+    snipe_min_ticks: float = _env("SNIPE_MIN_TICKS", 3.0, float)
     snipe_fv_min: float = _env("SNIPE_FV_MIN", 0.995, float)
     snipe_ask_max: float = 0.97
     snipe_min_ask_size: float = 12.0
@@ -145,7 +151,7 @@ class Config:
     book_max_age_s: float = 3.0            # never trust a book older than this
 
     # --- risk / kill-switches ---
-    max_daily_loss: float = _env("MAX_DAILY_LOSS", 25.0, float)   # $ paper, halt for the day
+    max_daily_loss: float = _env("MAX_DAILY_LOSS", 250.0, float)  # $ paper, halt for the day
     snipe_trailing_n: int = 30             # settled fills in the trailing window
     # Fast bleed tripwire, sized to the day's budget so it scales with bankroll
     # (paper $250 -> -$200; live 20%-of-bankroll -> -16%). A FIXED $ threshold
@@ -173,7 +179,8 @@ class Config:
     # three locks: mode=live+BANKROLL, LIVE_CONFIRM typed by a human, LIVE_SHADOW=0) ---
     live_shadow: bool = _env("LIVE_SHADOW", "1") == "1"       # DEFAULT ON: no real orders
     live_confirm: str = _env("LIVE_CONFIRM", "")
-    live_strategies: tuple = tuple(_env("LIVE_STRATEGIES", "snipe").split(","))
+    live_strategies: tuple = tuple(
+        s.strip() for s in _env("LIVE_STRATEGIES", "snipe").split(",") if s.strip())
     bankroll: float = _env("BANKROLL", 0.0, float)            # dollars; required in live
     live_per_trade_frac: float = _env("LIVE_PER_TRADE_FRAC", 0.10, float)
     live_daily_stop_frac: float = _env("LIVE_DAILY_STOP_FRAC", 0.20, float)

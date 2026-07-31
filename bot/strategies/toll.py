@@ -43,7 +43,8 @@ class TollStrategy:
             wts = int(now - now % T)
             close_ts = wts + T
             pre = None
-            if self.cfg.toll_pre_position:
+            if (self.cfg.toll_pre_position and self.cfg.toll_enabled
+                    and self.cfg.oracle_authoritative):
                 for lead, margin, sigma in self.cfg.toll_pre_stages:
                     stage_ts = close_ts - lead
                     if pre is not None or time.time() >= stage_ts:
@@ -58,7 +59,8 @@ class TollStrategy:
             if pre is not None:
                 pre = await self._guard_pre_order(wts, close_ts, pre)
             await asyncio.sleep(max(0.0, close_ts - time.time()))
-            if not self.cfg.toll_enabled or self.risk.halted("toll"):
+            if (not self.cfg.toll_enabled or not self.cfg.oracle_authoritative
+                    or self.risk.halted("toll")):
                 if pre is not None:      # never leak a pre-order into a halt
                     self.exec.cancel(pre[0].id)
                 continue

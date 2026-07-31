@@ -24,6 +24,9 @@ def main(days=7):
             "WHERE ts>=? AND pnl IS NOT NULL GROUP BY 1 ORDER BY 1", (t0,)):
         print(f"  {d}  ${pnl:9.2f}  ({n} fills)")
     mism = db.execute("SELECT SUM(mismatch), COUNT(*) FROM settlements").fetchone()
+    nwin = db.execute(
+        "SELECT COUNT(DISTINCT wts) FROM fills WHERE pnl IS NOT NULL").fetchone()[0]
+    print(f"distinct windows traded: {nwin} (win%% above is per fill-row)")
     unchecked = db.execute(
         "SELECT COUNT(*) FROM settlements WHERE winner IS NOT NULL "
         "AND oracle_winner IS NULL").fetchone()[0]

@@ -86,16 +86,25 @@ class SnipeStrategy:
         if k is None or k <= 0:
             return False
         sig_t = time.time() - self.cfg.snipe_signal_lag_s
-        s_lag = self.spot.close_at(sig_t)
+        s_lag, bar_sec = self.spot.close_at(sig_t)
         vol = self.spot.vol()
         basis = self.spot.basis()
         if s_lag is None or vol is None or basis is None:
             self.no_data += 1
             return False
-        tau = wts + T - sig_t
+        # sparse-tape staleness (audit F1): a bar much older than requested
+        # would be priced as fresh, understating the true horizon
+        if sig_t - bar_sec > self.cfg.spot_max_bar_age_s:
+            self.no_data += 1
+            return False
+        tau = wts + T - bar_sec
         if tau <= 0:
             return False
         s_adj = s_lag * basis
+        # input-resolution floor (audit F3): below N spot ticks of distance,
+        # fv is quantization noise dressed as confidence (binds on SOL only)
+        if abs(math.log(s_adj / k)) < self.cfg.snipe_min_ticks * self.cfg.spot_tick / s_adj:
+            return False
         fv = norm_cdf(math.log(s_adj / k) / (max(vol, self.cfg.snipe_vol_floor) * math.sqrt(tau)))
         self.evals += 1
         self.last_fv = fv
@@ -133,6 +142,15 @@ class SnipeStrategy:
         remaining = min(self.cfg.snipe_max_clip - w["shares"],
                         (self.cfg.snipe_window_max_cost - w["cost"])
                         / max(self.cfg.snipe_ask_max, 0.01))
+        # informed-wall guard on the SWEEP (audit: skip_ask_above only vetted
+        # the best level): cap size at the liquidity in front of the first
+        # giant level, so neither paper nor live extends into the wall
+        pre_wall = 0.0
+        for px in sorted(p for p in st.asks if p <= self.cfg.snipe_ask_max):
+            if st.asks[px] > self.cfg.snipe_skip_ask_above:
+                break
+            pre_wall += st.asks[px]
+        remaining = min(remaining, pre_wall)
         if w["attempts"] == 1:
             remaining = min(remaining, self.cfg.snipe_first_clip)
         if self.cfg.mode == "live":

@@ -31,11 +31,16 @@ class SpotFeed:
 
     # -- public estimators -------------------------------------------------
     def close_at(self, second):
-        """1s close at or before `second` (None if unknown)."""
+        """(close, bar_second) at or before `second` ((None, None) if unknown).
+
+        Returning the bar's own second lets the caller price staleness: on
+        sparse tapes (SOL p90 inter-trade gap ~5s) the latest bar can be many
+        seconds older than requested, and pricing it as fresh understates the
+        true horizon (audit F1)."""
         for s, c, _real in reversed(self.bars):
             if s <= second:
-                return c
-        return None
+                return c, s
+        return None, None
 
     def vol(self):
         """Std of 1s log returns over trailing real (non-gap-filled) bars.
@@ -55,10 +60,16 @@ class SpotFeed:
         return statistics.pstdev(rets)
 
     def basis(self):
-        """Rolling median of oracle/spot over the basis window (1.0 if unknown)."""
-        if len(self.basis_samples) < 10:
+        """Rolling median of oracle/spot over the basis window.
+
+        Age-filtered: the deque maxlen bounds sample COUNT, but on sparse
+        tapes those samples can span far longer than the design window
+        (audit F8a) — a stale correction is worse than none."""
+        now = time.time()
+        vals = [b for s, b in self.basis_samples if now - s <= 2 * self.cfg.basis_window_s]
+        if len(vals) < 10:
             return None
-        return statistics.median(b for _, b in self.basis_samples)
+        return statistics.median(vals)
 
     def silence(self):
         return time.time() - self.last_trade_ts if self.last_trade_ts else float("inf")
@@ -98,6 +109,9 @@ class SpotFeed:
                 await asyncio.sleep(backoff)
                 backoff = min(backoff * 2, 30)
             else:
+                # clean server-side close: still pay a delay — a venue that
+                # accepts-then-closes must not see a tight reconnect loop
+                await asyncio.sleep(backoff)
                 backoff = 1
 
     async def _run_coinbase(self, session):

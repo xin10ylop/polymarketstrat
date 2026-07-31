@@ -144,6 +144,66 @@ them in that order.
   Also catalogued for later: hourly SOL/XRP, daily up/down on stocks
   (TSLA/AAPL/...), forex, metals, indices — none tape-tested yet.
 
+- 2026-07-31 CONVERGENCE AUDIT (ROUND 3): 8 auditors — 2 models line-by-line
+  over the SAME core (adversarial pair) + 6 per-unit deep audits with live
+  probes and data refetches. RESULT: decision core CLEAN again (both models,
+  independently); money conservation re-proven; 60/60 data spot-checks agree
+  with gamma; live probes pass the firewall on every family. All confirmed
+  findings fixed same-day (commit r3), unit-tested, smoke-booted:
+  * LIVE (pre-money, the big two): 4xx order rejections no longer book
+    phantom worst-case fills (only transport/5xx ambiguity does — H1);
+    per-WINDOW live exposure now capped at per_trade_cap (retries could
+    stack ~3x documented risk — O3). Plus: price-floor enforced in the live
+    path, low-balance guard from cached reconciler balance, fee-scaled
+    reconciler tolerance (warn first, halt on repeat), fsync'd pending-intent.
+  * SPARSE-TAPE INSTRUMENT (SOL): bar staleness now priced (close_at returns
+    bar age; >2s = no-data) — a 5-9s-stale SOL print was priced as fresh,
+    overstating fv; barrier must exceed 3 spot ticks (below input resolution,
+    99.5% fv is quantization noise); basis median age-filtered. GOOD NEWS:
+    live SOL feed pair measured CLEAN (basis 0.999988) — the 1.03 'SOL
+    blindness' was the research replica only, never the bot.
+  * BREAKERS: trailing-30 now counts TAKES not price-level rows (on thin
+    books 'trailing 30' had become ~5 windows); unmarked-fills halt counts
+    windows and is time-limited (transient, healer-repaired); reconciler
+    grace outlives toll fill-polling; settlement re-entry can't erase a
+    recorded mismatch; MAX_DAILY_LOSS 650 on cap-500 units (one max loss
+    ~$486 must not exceed the 0.8x trailing floor alone).
+  * GUARDS: et_hourly+non-3600 window fails startup; live mode on a ledger
+    with paper fills fails startup; toll requires authoritative oracle AND
+    toll_enabled (incl. pre-positioning); ws resub race re-arms; spot clean-
+    close reconnects pay backoff; order ids seeded from MAX(id)+1; preflight
+    family/coin-aware; LIVE_STRATEGIES whitespace-safe; MemoryMax 300M all.
+  * eth15 RECONFIGURED to default signal (audit demolished the fv=0.999 tape
+    claim: carried by 4 lucky large fills, CI spans zero, deployed first-clip
+    truncated exactly those winners, and the runbook's own law — never tune
+    eth off the replica — was violated). Neutral true-feed evidence only.
+  * ETH-5m GATE = CONDITIONAL: lifetime EV jumped from +8.3c (audited Jul 27)
+    to ~+36c/sh implied on the final unaudited days, which also ran the old
+    retry over-fill. Before declaring live-eligible run on the droplet:
+    report 14 + fills-per-window histogram + per-window EV (commands in
+    chat log). EV-weighted criterion is robust to the bias; the $ headline
+    is not. 'Fills' = price-level rows, not windows (report now prints
+    distinct windows).
+  * btc15 day-one +$186 7/7 deep wins: 3-5 sigma vs tape base rates (deep
+    opportunities ~1/day all month, never 7). Tape is most pessimistic in
+    that exact band, so 'extraordinary, unverified'. VERIFY vs Telonex
+    Aug 1 (T+1 archive; 46 resolved windows already listed).
+  * REFUTED by triage (no change): 'paper sweeps unverified depth' (take
+    reads the post-latency ladder — depth survival IS honest); 'paper fv is
+    stale at fill' (live's in-flight order is equally stale at match; the
+    simulation is faithful).
+  * btc1h: full PASS incl. DST proof through 2027 (<=3 skipped windows/yr,
+    zero wrong-market paths). btc5m: PASS (its H1/M2 findings were in the
+    live path and shared code, fixed above).
+  CONVERGENCE STATEMENT: three rounds in, the decision core (signal, gates,
+  window/strike alignment, money math) has never had a confirmed finding.
+  Round 3's finds were: live-path hardening (untested by definition until
+  Tier 0), sparse-tape instrument honesty (SOL), breaker semantics at
+  low cadence, and evidence-quality corrections (eth15/ETH-gate). The
+  system is as verified as paper can make it; what remains unknowable
+  (fill-fraction under contention, real fees) is exactly what Tier 0
+  measures with $150.
+
 - 2026-07-31 MASTER AUDIT ROUND 2 (three tracks: Opus 5 deep-code, Fable 5
   reality/deployment, empirical Telonex reconciliation). ALL confirmed
   findings fixed same-day, unit-tested, smoke-booted both families:

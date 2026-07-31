@@ -15,6 +15,7 @@ OK, BAD = "  PASS", "  FAIL"
 
 async def main():
     results = []
+    arr = None
     async with aiohttp.ClientSession(trust_env=True) as s:
         # gamma discovery
         from bot.config import slug_for
@@ -47,7 +48,7 @@ async def main():
             results.append((skew < 0.5, f"clock skew vs coinbase: {skew*1000:.0f}ms "
                             "(install chrony if >500ms)"))
             async with s.ws_connect(CFG.coinbase_ws, heartbeat=10) as ws:
-                await ws.send_json({"type": "subscribe", "product_ids": ["BTC-USD"],
+                await ws.send_json({"type": "subscribe", "product_ids": [CFG.coinbase_product],
                                     "channels": ["matches"]})
                 got = False
                 for _ in range(5):
@@ -82,7 +83,7 @@ async def main():
                             break
                     if got:
                         break
-                results.append((bool(got and got > 1000),
+                results.append((bool(got and got > 0),
                                 f"resolution feed (chainlink data stream): BTC/USD={got}"))
         except Exception as e:  # noqa: BLE001
             results.append((False, f"resolution feed ws: {e}"))

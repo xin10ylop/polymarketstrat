@@ -8,9 +8,14 @@ StartLimitBurst=20
 # a conflict declaration here lets that project's deploys silently stop this bot
 
 [Service]
+NoNewPrivileges=true
 Type=simple
 WorkingDirectory=/opt/polymarketstrat
 Environment=BOT_MODE=paper
+Environment=COIN=btc
+Environment=FAMILY=5m
+Environment=WINDOW_SECS=300
+Environment=SLUG_PREFIX=btc-updown-5m
 Environment=SPOT_FEED=coinbase
 Environment=TOLL_ENABLED=0
 Environment=BOT_DATA_DIR=/opt/polymarketstrat/bot/data/snipe
@@ -22,7 +27,7 @@ Environment=MAX_DAILY_LOSS=250
 ExecStart=/opt/polymarketstrat/venv/bin/python -m bot.main
 Restart=always
 RestartSec=5
-MemoryMax=200M
+MemoryMax=300M
 
 [Install]
 WantedBy=multi-user.target

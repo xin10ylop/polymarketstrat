@@ -86,6 +86,10 @@ class RiskManager:
             # not even running in live; audit 2026-07-30 finding #6)
             self.halt("all", "oracle/exchange winner mismatch detected")
         if self.ledger.unmarked_old_fills() > self.cfg.max_unmarked_fills:
+            # TRANSIENT condition (gamma outage / late outcome) that the
+            # settlement healer repairs — time-limited halt, re-trips while
+            # the backlog persists, self-lifts once it clears
             self.halt("all", "settlement reconciler falling behind "
-                      f"({self.ledger.unmarked_old_fills()} unmarked fills)")
+                      f"({self.ledger.unmarked_old_fills()} unmarked fills)",
+                      until=time.time() + 900)
         # oracle staleness is checked at decision time by the strategies

@@ -19,7 +19,7 @@ Environment=TOLL_ENABLED=0
 Environment=SNIPE_WARMUP_S=1800
 Environment=SNIPE_MAX_CLIP=500
 Environment=SNIPE_WINDOW_MAX_COST=500
-Environment=MAX_DAILY_LOSS=600
+Environment=MAX_DAILY_LOSS=650
 Environment=BOT_DATA_DIR=/opt/polymarketstrat/bot/data/snipe-btc15
 Environment=LOG_LEVEL=INFO
 ExecStart=/opt/polymarketstrat/venv/bin/python -m bot.main

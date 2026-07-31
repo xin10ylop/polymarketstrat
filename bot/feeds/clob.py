@@ -220,6 +220,8 @@ class ClobFeed:
             await ws.send_json({"type": "market", "assets_ids": list(assets)})
             self._subscribed = assets
             self._want_resub.clear()
+            if frozenset(self.tokens.keys()) != assets:
+                self._want_resub.set()   # discovery raced the handshake
             log.info("clob ws subscribed to %d tokens", len(assets))
             await self._resync_books(assets)
             recv = asyncio.ensure_future(ws.receive())

@@ -86,7 +86,7 @@ class PaperExecutor:
         remaining = size
         total_sz = total_cost = total_fee = 0.0
         now = time.time()
-        fills = []
+        fills, staged = [], {}
         for px in sorted(p for p in list(st.asks) if p <= price_limit + 1e-9):
             if remaining <= 0:
                 break
@@ -101,9 +101,11 @@ class PaperExecutor:
             total_cost += px * take_sz
             total_fee += fee
             remaining -= take_sz
-            self._consumed[(wts, token, px)] = eaten + take_sz
+            staged[(wts, token, px)] = staged.get((wts, token, px), 0.0) + take_sz
         if total_sz < 5.0:      # exchange minimum order — live returns None below 5
-            return None
+            return None         # nothing committed: an aborted sweep eats no shares
+        for k, v in staged.items():
+            self._consumed[k] = self._consumed.get(k, 0.0) + v
         avg_px = total_cost / total_sz
         o = Order(id=next(_ids), wts=wts, strategy=strategy, token=token, side="buy",
                   price=round(avg_px, 4), size=total_sz, placed_ts=now, status="done",

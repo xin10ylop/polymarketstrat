@@ -39,7 +39,8 @@ class Ledger:
         self.db = sqlite3.connect(os.path.join(cfg.data_dir, "paper.db"),
                                   check_same_thread=False, timeout=10)
         self.db.execute("PRAGMA journal_mode=WAL")
-        self.db.execute("PRAGMA synchronous=NORMAL")
+        self.db.execute("PRAGMA synchronous=%s"
+                        % ("FULL" if cfg.mode == "live" else "NORMAL"))
         self.db.executescript(_SCHEMA)
         self.db.commit()
 
@@ -69,8 +70,16 @@ class Ledger:
         self.db.commit()
 
     def record_settlement(self, wts, winner, oracle_winner, token_of):
-        mismatch = int(winner is not None and oracle_winner is not None
-                       and winner != oracle_winner)
+        prev = self.db.execute(
+            "SELECT oracle_winner, mismatch FROM settlements WHERE wts=?",
+            (wts,)).fetchone()
+        if prev is not None and prev[0] is not None:
+            # already settled WITH a cross-check: keep the original verdict
+            oracle_winner, forced = prev[0], int(prev[1])
+            mismatch = forced
+        else:
+            mismatch = int(winner is not None and oracle_winner is not None
+                           and winner != oracle_winner)
         self.db.execute("INSERT OR REPLACE INTO settlements VALUES(?,?,?,?,?)",
                         (wts, winner, oracle_winner, mismatch, time.time()))
         # mark PnL on this window's fills: winner token pays 1, loser pays 0
@@ -86,6 +95,10 @@ class Ledger:
         self.db.commit()
         return mismatch
 
+    def max_order_id(self):
+        return self.db.execute(
+            "SELECT COALESCE(MAX(id), 0) FROM orders").fetchone()[0]
+
     def event(self, kind, detail=""):
         self.db.execute("INSERT INTO events VALUES(?,?,?)", (time.time(), kind, detail))
         self.db.commit()
@@ -98,9 +111,15 @@ class Ledger:
         return row[0]
 
     def snipe_trailing_pnl(self, n):
+        # per-TAKE aggregation (audit F4: one sweep writes a row per price
+        # level — on thin books 5-7 rows per take — so row-counting turned
+        # "trailing 30 trades" into "trailing ~5 windows"); 7d wall-clock
+        # bound so ancient fills can't dominate a slow unit's breaker
         rows = self.db.execute(
-            "SELECT pnl FROM fills WHERE strategy LIKE 'snipe%' AND pnl IS NOT NULL "
-            "ORDER BY ts DESC LIMIT ?", (n,)).fetchall()
+            "SELECT SUM(pnl) FROM fills WHERE strategy LIKE 'snipe%' "
+            "AND pnl IS NOT NULL AND ts > ? GROUP BY order_id "
+            "ORDER BY MAX(ts) DESC LIMIT ?",
+            (time.time() - 7 * 86400, n)).fetchall()
         return sum(p for (p,) in rows), len(rows)
 
     def unmarked_old_fills(self, older_than_s=900, newer_than_s=172800):
@@ -110,7 +129,8 @@ class Ledger:
         no_outcome events) are the healer's job, not a reason to halt."""
         now = time.time()
         return self.db.execute(
-            "SELECT COUNT(*) FROM fills WHERE pnl IS NULL AND ts < ? AND ts > ?",
+            "SELECT COUNT(DISTINCT wts) FROM fills WHERE pnl IS NULL "
+            "AND ts < ? AND ts > ?",
             (now - older_than_s, now - newer_than_s)).fetchone()[0]
 
     def unmarked_windows(self, older_than_s=900, max_age_s=7 * 86400):

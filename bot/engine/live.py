@@ -77,11 +77,12 @@ class LiveExecutor:
         self.shadow = cfg.live_shadow
         self.client = ClobClient(
             cfg.clob_url, chain_id=137, key=cfg.pm_private_key,
-            signature_type=cfg.pm_signature_type or None,
+            signature_type=cfg.pm_signature_type if cfg.pm_signature_type >= 0 else None,
             funder=cfg.pm_funder or None)
         self.client.set_api_creds(self.client.create_or_derive_api_key())
         self.open_orders = {}
         self._in_flight = False
+        self.last_balance = None
         self._warmed = set()
         self._day = self._utc_day()
         self._start_ts = time.time()
@@ -154,11 +155,24 @@ class LiveExecutor:
         st = self.clob.state(token)
         if (st is None or not st.book_fresh(self.cfg.book_max_age_s)
                 or st.best_ask is None or st.best_ask > price_limit
+                or st.best_ask < self.cfg.snipe_price_floor
                 or st.best_ask_size <= 0):
             return None
+        # low-collateral guard (audit M3): learn it from the reconciler's
+        # cached balance, not from a rejected order
+        if self.last_balance is not None and self.last_balance < self.bankroll.per_trade_cap:
+            self.ledger.event("live_skip_lowbal", f"w{wts} bal={self.last_balance:.2f}")
+            return None
         # cap by cost AT THE LIMIT: a FAK sweeps every level <= price_limit,
-        # so this is the only price that bounds worst-case spend
-        cap_sz = self.bankroll.per_trade_cap / max(price_limit, 0.01)
+        # so this is the only price that bounds worst-case spend. Window
+        # exposure is ALSO capped at per_trade_cap total (audit O3: retries
+        # previously stacked up to ~3x the documented per-window risk).
+        if not hasattr(self, "_win_cost"):
+            self._win_cost = {}
+        for k in [k for k in self._win_cost if k < wts - 4 * self.cfg.window_secs]:
+            del self._win_cost[k]
+        budget = self.bankroll.per_trade_cap - self._win_cost.get(wts, 0.0)
+        cap_sz = budget / max(price_limit, 0.01)
         fill_sz = round(min(size, cap_sz), 2)
         if fill_sz < 5:                                  # exchange minimum
             return None
@@ -203,6 +217,17 @@ class LiveExecutor:
                                           "Trading is currently", "425")):
                     self.ledger.event("live_backoff", f"w{wts} {msg[:80]}")
                     time.sleep(2)     # worker thread: does not block the loop
+                    return None
+                # CLEAN PRE-MATCH REJECTION (audit H1): a 4xx from the CLOB
+                # (balance/allowance, invalid payload, tick, min-size, dup,
+                # geo) means ZERO money moved — booking a phantom fill here
+                # would corrupt the ledger. Halt for a human, book nothing.
+                sc = getattr(e, "status_code", None)
+                if sc is not None and 400 <= sc < 500 and sc not in (408, 425, 429):
+                    self.ledger.event("live_error", f"w{wts} rejected {sc}: {msg[:120]}")
+                    self.risk.halt("all", f"order rejected ({sc}) — fix the cause "
+                                   "before restarting")
+                    log.error("LIVE ORDER REJECTED w%s (%s): nothing booked", wts, msg[:120])
                     return None
                 # AMBIGUOUS TRANSPORT FAILURE (timeout/reset/5xx): the order may
                 # have matched. Book the same worst-case provisional fill as an
@@ -261,6 +286,7 @@ class LiveExecutor:
             self.ledger.record_fill(o, o.placed_ts, avg_px, matched, fee_est,
                                     maker=False)
             cost = matched * avg_px
+            self._win_cost[wts] = self._win_cost.get(wts, 0.0) + cost
             if cost > self.bankroll.per_trade_cap * 1.05:
                 # tripwire: should be unreachable with limit-price sizing;
                 # if it fires, the cap model is wrong — stop everything
@@ -355,21 +381,29 @@ async def balance_reconciler(cfg, ledger, executor, risk):
     hidden cost or a bug — trips a REAL sticky halt via RiskManager.
     Also warns when buying power runs low (unredeemed winnings are not
     collateral — redeem daily)."""
-    TOL = 0.10
+    breaches = 0
     while True:
         await asyncio.sleep(3600)
         actual = await asyncio.to_thread(executor.fetch_balance)
         if actual < 0:
             ledger.event("reconciler_skip", "balance unreadable")
             continue
-        spent = ledger.db.execute(
-            "SELECT COALESCE(SUM(price*size + fee), 0) FROM fills "
-            "WHERE ts >= ?", (executor._start_ts,)).fetchone()[0]
-        floor = executor.start_balance - spent - TOL
+        executor.last_balance = actual
+        spent, fees = ledger.db.execute(
+            "SELECT COALESCE(SUM(price*size + fee), 0), COALESCE(SUM(fee), 0) "
+            "FROM fills WHERE ts >= ?", (executor._start_ts,)).fetchone()
+        # tolerance scales with modelled fees: the fee curve is verified but
+        # not fill-confirmed (audit O8) — a modest model error must warn
+        # loudly on first breach, halt only when it repeats
+        tol = max(0.10, 0.25 * fees)
+        floor = executor.start_balance - spent - tol
         if actual < floor:
-            risk.halt("all", f"balance reconciler: actual {actual:.2f} < "
-                      f"floor {floor:.2f} (spent {spent:.2f} since start)")
-            log.error("RECONCILER HALT: balance %.2f below floor %.2f", actual, floor)
+            breaches += 1
+            ledger.event("reconciler_breach", f"actual {actual:.2f} floor {floor:.2f} n={breaches}")
+            log.error("RECONCILER BREACH %d: balance %.2f below floor %.2f", breaches, actual, floor)
+            if breaches >= 2:
+                risk.halt("all", f"balance reconciler: actual {actual:.2f} < "
+                          f"floor {floor:.2f} (spent {spent:.2f} since start)")
         else:
             log.info("reconciler ok: balance %.2f, ledger spend %.2f", actual, spent)
             if actual < 2 * executor.bankroll.per_trade_cap:
