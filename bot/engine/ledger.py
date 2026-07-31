@@ -24,6 +24,9 @@ CREATE TABLE IF NOT EXISTS settlements(
   wts INTEGER PRIMARY KEY, winner TEXT, oracle_winner TEXT, mismatch INTEGER,
   settle_ts REAL);
 CREATE TABLE IF NOT EXISTS events(ts REAL, kind TEXT, detail TEXT);
+CREATE INDEX IF NOT EXISTS ix_fills_ts ON fills(ts);
+CREATE INDEX IF NOT EXISTS ix_fills_wts ON fills(wts);
+CREATE INDEX IF NOT EXISTS ix_fills_strat_ts ON fills(strategy, ts);
 """
 
 
@@ -121,8 +124,11 @@ class Ledger:
     def mark_window_by_token(self, wts, win_token, winner):
         """Late settlement: mark a window's fills against the winning token id
         (used when the market has long left the live discovery set)."""
+        # OR IGNORE, not REPLACE: if the reconciler already wrote this window's
+        # settlement (with its real mismatch flag), the healer must never
+        # clobber it (audit M7 — a REPLACE would erase a recorded mismatch)
         self.db.execute(
-            "INSERT OR REPLACE INTO settlements VALUES(?,?,?,?,?)",
+            "INSERT OR IGNORE INTO settlements VALUES(?,?,?,?,?)",
             (wts, winner, None, 0, time.time()))
         n = 0
         for rowid, tok, px, sz, fee in self.db.execute(

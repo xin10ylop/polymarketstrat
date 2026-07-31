@@ -17,13 +17,15 @@ async def main():
     results = []
     async with aiohttp.ClientSession(trust_env=True) as s:
         # gamma discovery
+        from bot.config import slug_for
         now = int(time.time())
-        wts = now - now % 300 + 300
+        wts = now - now % CFG.window_secs + CFG.window_secs
+        slug = slug_for(CFG, wts)
         try:
-            async with s.get(f"{CFG.gamma_url}/markets?slug={CFG.slug_prefix}-{wts}",
+            async with s.get(f"{CFG.gamma_url}/markets?slug={slug}",
                              timeout=aiohttp.ClientTimeout(total=10)) as r:
                 arr = await r.json()
-            results.append((bool(arr), f"gamma market discovery ({CFG.slug_prefix}-{wts})"))
+            results.append((bool(arr), f"gamma market discovery ({slug})"))
         except Exception as e:  # noqa: BLE001
             results.append((False, f"gamma: {e}"))
         # CLOB ws

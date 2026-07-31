@@ -96,10 +96,14 @@ class Oracle:
             n += 1
         if n:
             self.last_rx = time.time()
-            if len(self._order) > 4000:      # prune to ~last hour
-                for old in self._order[:-3600]:
+            # retention must cover reconciliation of a FULL window plus its
+            # grace period (audit M3: fixed 1h retention silently killed the
+            # 1h family's open-sample lookup at reconcile time)
+            keep = max(3600, 2 * self.cfg.window_secs + 1200)
+            if len(self._order) > keep + 400:
+                for old in self._order[:-keep]:
                     self.samples.pop(old, None)
-                self._order = self._order[-3600:]
+                self._order = self._order[-keep:]
 
     # ------------------------------------------------------------------
     def price_at(self, unix_second, exact=True, tolerance=0):

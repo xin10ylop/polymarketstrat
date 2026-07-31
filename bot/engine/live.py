@@ -187,6 +187,11 @@ class LiveExecutor:
                             token[:12], fill_sz, price_limit, strategy, wts)
                 return None
 
+            # Durable intent BEFORE the POST (audit C5): if the process dies or
+            # the connection drops AFTER the order matched on-chain, this row
+            # is the only evidence a position may exist.
+            self.ledger.event("live_pending",
+                              f"w{wts} {strategy} {token[:12]} {fill_sz}@<={price_limit}")
             try:
                 resp = self.client.post_order(signed, OrderType.FAK)
             except Exception as e:  # noqa: BLE001
@@ -199,7 +204,27 @@ class LiveExecutor:
                     self.ledger.event("live_backoff", f"w{wts} {msg[:80]}")
                     time.sleep(2)     # worker thread: does not block the loop
                     return None
-                raise
+                # AMBIGUOUS TRANSPORT FAILURE (timeout/reset/5xx): the order may
+                # have matched. Book the same worst-case provisional fill as an
+                # unparseable response — never silently drop a possible position.
+                self._trades_today += 1
+                o = Order(id=next(_ids), wts=wts, strategy=strategy, token=token,
+                          side="buy", price=price_limit, size=fill_sz,
+                          placed_ts=time.time(), status="done", filled=fill_sz,
+                          fees=self.cfg.taker_fee_mult * price_limit
+                          * (1 - price_limit) * fill_sz)
+                try:
+                    self.ledger.record_order(o, mode="LIVE-take-UNCONFIRMED")
+                    self.ledger.record_fill(o, o.placed_ts, price_limit, fill_sz,
+                                            o.fees, maker=False)
+                finally:
+                    self.ledger.event("live_unconfirmed",
+                                      f"w{wts} POST raised: {msg[:160]}")
+                    self.risk.halt("all", "order POST failed ambiguously — "
+                                   "reconcile against the exchange before restarting")
+                log.error("LIVE POST AMBIGUOUS w%s (%s): booked worst-case "
+                          "%.1f@%.3f, halted", wts, msg[:100], fill_sz, price_limit)
+                return o
             matched, avg_px = self._parse_fill(resp, price_limit)
             if matched < 0:
                 # CONFIRMED-BUT-AMBIGUOUS: the exchange says matched/delayed or

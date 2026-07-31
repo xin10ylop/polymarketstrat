@@ -105,12 +105,7 @@ class SnipeStrategy:
             return False
         token = mk.token_up if side == "up" else mk.token_down
         st = self.clob.state(token)
-        if (st is None or not st.book_fresh(self.cfg.book_max_age_s)
-                or st.best_ask is None
-                or st.best_ask > self.cfg.snipe_ask_max
-                or st.best_ask < self.cfg.snipe_price_floor
-                or st.best_ask_size < self.cfg.snipe_min_ask_size
-                or st.best_ask_size > self.cfg.snipe_skip_ask_above):
+        if not self._ask_ok(st):
             self.near_misses += 1
             return False
         w["attempts"] += 1
@@ -126,16 +121,18 @@ class SnipeStrategy:
             # the FAK goes out immediately and the exchange decides the race.
             await asyncio.sleep(self.cfg.snipe_take_recheck_s)
             st = self.clob.state(token)
-            if (st is None or not st.book_fresh(self.cfg.book_max_age_s)
-                    or st.best_ask is None
-                    or st.best_ask > self.cfg.snipe_ask_max
-                    or st.best_ask_size < self.cfg.snipe_min_ask_size):
+            # full entry predicate, not a weaker subset: price floor and the
+            # giant-ask refusal must hold on the post-latency book too
+            if not self._ask_ok(st):
                 self.recheck_fail += 1
                 self._depth_event(wts, side, fv, depth_pre,
                                   self.clob.state(token), 0.0)
                 return False
+        # budget sized at the sweep LIMIT, not best_ask: the take may fill
+        # deeper levels up to ask_max, and live sizes at the limit (audit M2)
         remaining = min(self.cfg.snipe_max_clip - w["shares"],
-                        (self.cfg.snipe_window_max_cost - w["cost"]) / max(st.best_ask, 0.01))
+                        (self.cfg.snipe_window_max_cost - w["cost"])
+                        / max(self.cfg.snipe_ask_max, 0.01))
         if w["attempts"] == 1:
             remaining = min(remaining, self.cfg.snipe_first_clip)
         if self.cfg.mode == "live":
@@ -155,6 +152,16 @@ class SnipeStrategy:
         self._depth_event(wts, side, fv, depth_pre, st,
                           order.filled if order else 0.0)
         return False
+
+    def _ask_ok(self, st):
+        """The single entry/recheck gate predicate (audit M4: the recheck must
+        not be a weaker subset of the entry check)."""
+        return not (st is None or not st.book_fresh(self.cfg.book_max_age_s)
+                    or st.best_ask is None
+                    or st.best_ask > self.cfg.snipe_ask_max
+                    or st.best_ask < self.cfg.snipe_price_floor
+                    or st.best_ask_size < self.cfg.snipe_min_ask_size
+                    or st.best_ask_size > self.cfg.snipe_skip_ask_above)
 
     def _depth_event(self, wts, side, fv, pre, st, filled):
         """Deeper-book research tap: the ask ladder at signal time and after

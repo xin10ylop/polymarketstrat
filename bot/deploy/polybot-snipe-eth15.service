@@ -27,7 +27,7 @@ Environment=LOG_LEVEL=INFO
 ExecStart=/opt/polymarketstrat/venv/bin/python -m bot.main
 Restart=always
 RestartSec=5
-MemoryMax=150M
+MemoryMax=300M
 
 [Install]
 WantedBy=multi-user.target

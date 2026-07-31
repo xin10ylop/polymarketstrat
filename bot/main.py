@@ -66,6 +66,21 @@ async def reconciler(cfg, clob, ledger, toll, oracle):
         await asyncio.sleep(10)
 
 
+async def _supervised(name, fn, *args):
+    """Bookkeeping tasks must not tear the process down (audit M8): one
+    unhandled exception in reconciler/healer/status restarts the TASK after
+    10s instead of killing every feed and re-arming the 10-30min warmup."""
+    while True:
+        try:
+            await fn(*args)
+            log.error("task %s exited unexpectedly; restarting in 10s", name)
+        except asyncio.CancelledError:
+            raise
+        except Exception:  # noqa: BLE001
+            log.exception("task %s crashed; restarting in 10s", name)
+        await asyncio.sleep(10)
+
+
 async def settlement_healer(cfg, ledger):
     """Second-chance settlement: windows whose outcome was missing when the
     live reconciler gave up (Polymarket occasionally publishes results late)
@@ -166,9 +181,9 @@ async def amain():
         asyncio.create_task(risk.run(), name="risk"),
         asyncio.create_task(toll.run(), name="toll"),
         asyncio.create_task(snipe.run(), name="snipe"),
-        asyncio.create_task(reconciler(CFG, clob, ledger, toll, oracle), name="reconciler"),
-        asyncio.create_task(settlement_healer(CFG, ledger), name="healer"),
-        asyncio.create_task(status(CFG, ledger, oracle, spot, clob, toll, snipe), name="status"),
+        asyncio.create_task(_supervised("reconciler", reconciler, CFG, clob, ledger, toll, oracle), name="reconciler"),
+        asyncio.create_task(_supervised("healer", settlement_healer, CFG, ledger), name="healer"),
+        asyncio.create_task(_supervised("status", status, CFG, ledger, oracle, spot, clob, toll, snipe), name="status"),
     ]
     if reconciler_task is not None:
         tasks.append(asyncio.create_task(reconciler_task, name="balance-reconciler"))

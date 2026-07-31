@@ -24,7 +24,11 @@ def main(days=7):
             "WHERE ts>=? AND pnl IS NOT NULL GROUP BY 1 ORDER BY 1", (t0,)):
         print(f"  {d}  ${pnl:9.2f}  ({n} fills)")
     mism = db.execute("SELECT SUM(mismatch), COUNT(*) FROM settlements").fetchone()
-    print(f"\nsettlements={mism[1]}, oracle/exchange mismatches={mism[0] or 0}")
+    unchecked = db.execute(
+        "SELECT COUNT(*) FROM settlements WHERE winner IS NOT NULL "
+        "AND oracle_winner IS NULL").fetchone()[0]
+    print(f"\nsettlements={mism[1]}, oracle/exchange mismatches={mism[0] or 0}"
+          f" (cross-check missing on {unchecked})")
     unmarked = db.execute(
         "SELECT COUNT(*) FROM fills WHERE pnl IS NULL AND ts < ?",
         (time.time() - 900,)).fetchone()[0]

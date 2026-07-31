@@ -105,19 +105,40 @@ class ClobFeed:
             if not arr:
                 continue
             m = arr[0]
+            # THE slug-bug firewall: whatever slug scheme produced this market,
+            # its endDate must equal this window's close — otherwise we found a
+            # DIFFERENT market (DST naming, format drift) and trading it would
+            # be a silent wrong-market position. Skip and log instead.
+            end_ts = self._parse_end(m.get("endDate"))
+            if end_ts != wts + self.cfg.window_secs:
+                log.error("slug %s endDate=%s != w%s close — WRONG MARKET, skipping",
+                          slug, end_ts, wts)
+                continue
+            if any(x.condition_id == m["conditionId"] for x in self.markets.values()):
+                log.error("slug %s condition already registered under another "
+                          "window — skipping duplicate", slug)
+                continue
             toks = json.loads(m["clobTokenIds"])
             outcomes = json.loads(m["outcomes"]) if isinstance(m.get("outcomes"), str) else m["outcomes"]
-            up_idx = outcomes.index("Up")
+            try:
+                up_idx = outcomes.index("Up")
+            except ValueError:
+                log.error("slug %s unexpected outcomes %s — skipping", slug, outcomes)
+                continue
             mk = Market(wts=wts, slug=slug, condition_id=m["conditionId"],
                         token_up=toks[up_idx], token_down=toks[1 - up_idx],
                         min_size=float(m.get("orderMinSize") or 5),
                         tick=float(m.get("orderPriceMinTickSize") or 0.01))
             self.markets[wts] = mk
             for tid in (mk.token_up, mk.token_down):
-                self.tokens[tid] = TokenState(tick=mk.tick)
+                # setdefault: NEVER wipe the live book of a token we already
+                # track — a reset ladder rebuilt from deltas fakes liquidity
+                self.tokens.setdefault(tid, TokenState(tick=mk.tick))
                 self.token_owner[tid] = (wts, "up" if tid == mk.token_up else "down")
             log.info("discovered %s (cond %s...)", slug, mk.condition_id[:10])
             self._want_resub.set()
+            await self._resync_books([mk.token_up, mk.token_down])
+            await self._check_fee_meta(mk)
         horizon = now - 3 * self.cfg.window_secs
         for wts in [w for w in self.markets if w < horizon]:
             mk = self.markets.pop(wts)
@@ -142,6 +163,36 @@ class ClobFeed:
                     await asyncio.sleep(1)
         finally:
             await self._session.close()
+
+    @staticmethod
+    def _parse_end(end):
+        """ISO endDate -> epoch seconds; None/parse failure -> -1 (never matches)."""
+        try:
+            from datetime import datetime
+            return int(datetime.fromisoformat(end.replace("Z", "+00:00")).timestamp())
+        except Exception:  # noqa: BLE001
+            return -1
+
+    async def _check_fee_meta(self, mk):
+        """Once per process: verify CLOB fee metadata still matches the
+        modelled curve's basis (maker/taker base_fee 1000). Drift = loud log."""
+        if getattr(self, "_fee_checked", False):
+            return
+        self._fee_checked = True
+        try:
+            async with self._session.get(
+                    f"{self.cfg.clob_url}/markets/{mk.condition_id}",
+                    timeout=aiohttp.ClientTimeout(total=10)) as r:
+                meta = await r.json()
+            mb, tb = meta.get("maker_base_fee"), meta.get("taker_base_fee")
+            if (mb, tb) != (1000, 1000):
+                log.error("FEE METADATA DRIFT: maker_base_fee=%s taker_base_fee=%s "
+                          "(modelled 0.07*p*(1-p) assumed 1000/1000) — re-verify "
+                          "the fee curve before trusting PnL", mb, tb)
+            else:
+                log.info("fee metadata check OK (base_fee 1000/1000)")
+        except Exception as e:  # noqa: BLE001
+            log.warning("fee metadata check failed (non-fatal): %s", e)
 
     async def _resync_books(self, assets):
         """REST snapshot of every subscribed book (heals ws-gap staleness)."""

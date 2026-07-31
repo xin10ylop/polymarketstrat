@@ -75,6 +75,14 @@ class PaperExecutor:
         if (st is None or not st.book_fresh(self.cfg.book_max_age_s)
                 or st.best_ask is None or st.best_ask > price_limit):
             return None
+        # Simulated consumption ledger: the shared ws book is refreshed by real
+        # snapshots/deltas, so decrementing it is erased within ms — retries
+        # could re-buy the same displayed shares (audit C3). Track what THIS
+        # executor already "ate" per (wts, token, price) and subtract it.
+        if not hasattr(self, "_consumed"):
+            self._consumed = {}
+        for k in [k for k in self._consumed if k[0] < wts - 4 * self.cfg.window_secs]:
+            del self._consumed[k]
         remaining = size
         total_sz = total_cost = total_fee = 0.0
         now = time.time()
@@ -82,7 +90,8 @@ class PaperExecutor:
         for px in sorted(p for p in list(st.asks) if p <= price_limit + 1e-9):
             if remaining <= 0:
                 break
-            avail = st.asks.get(px, 0.0)
+            eaten = self._consumed.get((wts, token, px), 0.0)
+            avail = st.asks.get(px, 0.0) - eaten
             take_sz = min(avail, remaining)
             if take_sz <= 0:
                 continue
@@ -92,10 +101,8 @@ class PaperExecutor:
             total_cost += px * take_sz
             total_fee += fee
             remaining -= take_sz
-            st.asks[px] = avail - take_sz                # consume simulated liquidity
-            if st.asks[px] <= 0:
-                st.asks.pop(px, None)
-        if total_sz <= 0:
+            self._consumed[(wts, token, px)] = eaten + take_sz
+        if total_sz < 5.0:      # exchange minimum order — live returns None below 5
             return None
         avg_px = total_cost / total_sz
         o = Order(id=next(_ids), wts=wts, strategy=strategy, token=token, side="buy",

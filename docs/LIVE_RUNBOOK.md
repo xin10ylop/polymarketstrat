@@ -144,6 +144,57 @@ them in that order.
   Also catalogued for later: hourly SOL/XRP, daily up/down on stocks
   (TSLA/AAPL/...), forex, metals, indices — none tape-tested yet.
 
+- 2026-07-31 MASTER AUDIT ROUND 2 (three tracks: Opus 5 deep-code, Fable 5
+  reality/deployment, empirical Telonex reconciliation). ALL confirmed
+  findings fixed same-day, unit-tested, smoke-booted both families:
+  * WRONG-MARKET FIREWALL (C1): discovery now asserts market endDate ==
+    window close for EVERY family — any slug bug (incl. Polymarket's
+    hours-since-midnight DST-night naming, proven on 2026-03-08 data)
+    becomes a skipped window, never a silent wrong trade. DST cost: <=4
+    skipped windows/yr (fall-back ambiguity guard + spring-forward firewall).
+  * TOKEN-STATE WIPE (C2): re-discovery can no longer reset a live book
+    (setdefault + duplicate-condition guard + REST resync on registration).
+  * PAPER OVER-FILL (C3): PaperExecutor tracks consumed liquidity per
+    (window,token,price) — retries can never re-buy the same displayed
+    shares the ws book restored. THIS WAS PAPER-OPTIMISTIC; expect slightly
+    lower paper retry fills going forward (that's honesty, not decay).
+  * LIVE POST CRASH-SAFETY (C5): durable live_pending event before every
+    POST; ambiguous transport failures book the worst-case provisional fill
+    + sticky halt (previously: possible real position with zero ledger rows).
+  * 1h ORACLE RETENTION (M3): sample retention now scales with window size;
+    the 1h cross-check was silently never running (reports "cross-check
+    missing on N" now surfaces this in bot.report).
+  * Paper budget sized at sweep limit (M2), unified entry/recheck gate incl
+    price floor + giant-ask refusal (M4), exchange 5-share minimum in paper
+    (M5), healer can't clobber a recorded mismatch (M7), task supervision so
+    bookkeeping crashes restart the task not the process (M8), StartLimit in
+    [Unit] + MemoryMax 300M (M9/M10), fee-metadata drift check at startup
+    (M11 — was promised in a comment, never implemented; now real, passes
+    1000/1000), ledger indexes, preflight uses slug_for/window_secs.
+  * KNOWN REMAINING PAPER OPTIMISM (documented, not yet calibratable): paper
+    wins contested races WHOLE — when an ask survives the 0.5s gate, paper
+    takes all of it; live's FAK gets whatever faster rivals left (C4). The
+    Tier-0 live gate MUST measure matched_shares/requested_shares as a
+    first-class metric (live_forensics already records it). Until calibrated,
+    treat paper share counts as an upper bound; EV/share is unaffected.
+  * GATE DATA RELABEL (M1): btc15/eth15/btc1h results before this date ran
+    an effective ~330-share cap ($300 window budget bound before the 500
+    clip); budgets now scaled (SNIPE_WINDOW_MAX_COST=500, MAX_DAILY_LOSS=600).
+  * POST-LIVE CONTAMINATION PROTOCOL (F4): once live trades, paper bots on
+    the same family will FAIL their recheck on exactly the asks live wins —
+    paper fill-rate drops through no fault of the edge. Compare paper-vs-live
+    at the ATTEMPT level (join depth events by window+ts), classify paper
+    recheck-fails within ~1s of an own live fill as self-consumed, and
+    pre-expect the paper fill-rate drop. Never read that drop as edge decay.
+  * eth15 EXPERIMENT AMENDMENT (F7): deployed same-day at owner's request
+    (paper is free); supersedes the same-day "no bot now" line above. It IS
+    the single-survivor-of-a-scan config — treat as exploratory only.
+  * 1h GATE INTERPRETATION (F1): bot signal runs in the Chainlink frame while
+    the market resolves on the Binance candle — the bot is the PROXY on this
+    family (tape held the true frame). Non-authoritative oracle logs
+    disagreements; expect bot-vs-tape gap from frame noise. On a non-US live
+    host, consider SPOT_FEED=binance for the 1h family.
+
 - 2026-07-31 TAPE-vs-BOT EMPIRICAL RECONCILIATION (audit track 3): replayed
   research tapes on days where live paper bots have actuals, independent data
   paths (tape: Binance-proxy signal + Telonex archive; bot: Coinbase+oracle
