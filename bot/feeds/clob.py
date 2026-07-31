@@ -94,7 +94,10 @@ class ClobFeed:
         for wts in wanted:
             if wts in self.markets:
                 continue
-            from bot.config import slug_for
+            from bot.config import et_slug_ambiguous, slug_for
+            if et_slug_ambiguous(self.cfg, wts):
+                log.warning("skipping DST-ambiguous hourly window w%s", wts)
+                continue
             slug = slug_for(self.cfg, wts)
             url = f"{self.cfg.gamma_url}/markets?slug={slug}"
             async with self._session.get(url, timeout=aiohttp.ClientTimeout(total=10)) as r:

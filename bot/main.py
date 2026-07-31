@@ -48,6 +48,14 @@ async def reconciler(cfg, clob, ledger, toll, oracle):
                 k_close = oracle.price_at(wts + cfg.window_secs, exact=True)
                 if k_open is not None and k_close is not None:
                     oracle_winner = "up" if k_close >= k_open else "down"
+            if not cfg.oracle_authoritative:
+                # 1h family resolves on the Binance candle, not our oracle
+                # feed: a disagreement is vendor dispersion, not our bug —
+                # log it for the K-frame delta record, never flag/halt.
+                if oracle_winner is not None and oracle_winner != winner:
+                    log.warning("w%s oracle-proxy disagrees: oracle=%s official=%s "
+                                "(non-authoritative, no halt)", wts, oracle_winner, winner)
+                oracle_winner = None
             mismatch = ledger.record_settlement(
                 wts, winner, oracle_winner,
                 token_of=lambda w, m=mk: m.token_up if w == "up" else m.token_down)
@@ -73,7 +81,9 @@ async def settlement_healer(cfg, ledger):
             if time.time() - tried.get(wts, 0) < 3600:
                 continue
             tried[wts] = time.time()
-            from bot.config import slug_for
+            from bot.config import et_slug_ambiguous, slug_for
+            if et_slug_ambiguous(cfg, wts):
+                continue
             slug = slug_for(cfg, wts)
             url = f"{cfg.gamma_url}/markets?slug={slug}&closed=true"
             try:

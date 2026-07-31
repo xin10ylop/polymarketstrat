@@ -2,6 +2,8 @@
 Description=Polymarket paper bot - SNIPE only (btc 1h hourly family)
 After=network-online.target
 Wants=network-online.target
+StartLimitIntervalSec=600
+StartLimitBurst=20
 
 [Service]
 Type=simple
@@ -13,10 +15,12 @@ Environment=FAMILY=1h
 Environment=WINDOW_SECS=3600
 Environment=SLUG_PREFIX=bitcoin-up-or-down
 Environment=SLUG_STYLE=et_hourly
+Environment=ORACLE_AUTHORITATIVE=0
 Environment=TOLL_ENABLED=0
 Environment=SNIPE_WARMUP_S=1800
 Environment=SNIPE_MAX_CLIP=500
-Environment=MAX_DAILY_LOSS=250
+Environment=SNIPE_WINDOW_MAX_COST=500
+Environment=MAX_DAILY_LOSS=600
 Environment=BOT_DATA_DIR=/opt/polymarketstrat/bot/data/snipe-btc1h
 Environment=LOG_LEVEL=INFO
 ExecStart=/opt/polymarketstrat/venv/bin/python -m bot.main

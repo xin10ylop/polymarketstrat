@@ -2,6 +2,8 @@
 Description=Polymarket paper bot - SNIPE only (eth 15m family, strict-signal experiment)
 After=network-online.target
 Wants=network-online.target
+StartLimitIntervalSec=600
+StartLimitBurst=20
 
 [Service]
 Type=simple
@@ -18,7 +20,8 @@ Environment=TOLL_ENABLED=0
 Environment=SNIPE_FV_MIN=0.999
 Environment=SNIPE_WARMUP_S=1800
 Environment=SNIPE_MAX_CLIP=500
-Environment=MAX_DAILY_LOSS=250
+Environment=SNIPE_WINDOW_MAX_COST=500
+Environment=MAX_DAILY_LOSS=600
 Environment=BOT_DATA_DIR=/opt/polymarketstrat/bot/data/snipe-eth15
 Environment=LOG_LEVEL=INFO
 ExecStart=/opt/polymarketstrat/venv/bin/python -m bot.main

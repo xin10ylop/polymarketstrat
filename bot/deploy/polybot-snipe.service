@@ -2,6 +2,8 @@
 Description=Polymarket paper bot - SNIPE only
 After=network-online.target
 Wants=network-online.target
+StartLimitIntervalSec=600
+StartLimitBurst=20
 # no Conflicts= line: another project on this host owns the name polybot.service;
 # a conflict declaration here lets that project's deploys silently stop this bot
 

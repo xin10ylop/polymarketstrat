@@ -26,6 +26,12 @@ class Config:
     # wts: <prefix>-<window start epoch> (5m/15m families)
     # et_hourly: <prefix>-<month>-<day>-<year>-<h>{am,pm}-et (1h family)
     slug_style: str = _env("SLUG_STYLE", "wts")
+    # Whether the oracle feed is the market's official resolution source.
+    # True for 5m/15m (Chainlink stream is named in resolutionSource; any
+    # disagreement with gamma = OUR bug = sticky halt). The 1h family
+    # resolves on the Binance BTC/USDT candle instead, so there the oracle
+    # is only a signal proxy: disagreements are logged, never halted on.
+    oracle_authoritative: bool = _env("ORACLE_AUTHORITATIVE", "1") == "1"
 
     # --- endpoints ---
     gamma_url: str = "https://gamma-api.polymarket.com"
@@ -192,6 +198,16 @@ def slug_for(cfg, wts: int) -> str:
         hr = t.strftime("%I%p").lstrip("0").lower()
         return f"{cfg.slug_prefix}-{t.strftime('%B').lower()}-{t.day}-{t.year}-{hr}-et"
     return f"{cfg.slug_prefix}-{wts}"
+
+
+def et_slug_ambiguous(cfg, wts: int) -> bool:
+    """DST fall-back: the repeated ET hour makes two epoch-hours share one
+    slug (e.g. Nov 1 2026, 05:00Z and 06:00Z are both '1am-et'). Binding
+    either risks the wrong strike and settlement — skip both (2 windows/yr)."""
+    if cfg.slug_style != "et_hourly":
+        return False
+    s = slug_for(cfg, wts)
+    return s == slug_for(cfg, wts - 3600) or s == slug_for(cfg, wts + 3600)
 
 
 CFG = Config()
