@@ -37,8 +37,11 @@ class SpotFeed:
         sparse tapes (SOL p90 inter-trade gap ~5s) the latest bar can be many
         seconds older than requested, and pricing it as fresh understates the
         true horizon (audit F1)."""
-        for s, c, _real in reversed(self.bars):
-            if s <= second:
+        # skip synthetic gap-fill bars: they carry a STALE price under a fresh
+        # label, defeating both the age gate and tau-from-bar (audit: the real
+        # F1 fix — age must be measured to the last REAL trade)
+        for s, c, real in reversed(self.bars):
+            if real and s <= second:
                 return c, s
         return None, None
 

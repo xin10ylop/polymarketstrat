@@ -144,6 +144,29 @@ them in that order.
   Also catalogued for later: hourly SOL/XRP, daily up/down on stocks
   (TSLA/AAPL/...), forex, metals, indices — none tape-tested yet.
 
+- 2026-07-31 EVENING INCIDENT: 5m FILL DROUGHT (chronicle + verdicts).
+  Fills stopped 10:39:58Z fleet-wide on 5m; 15m filled 7x same period.
+  Diagnosis chain: timeline acquitted the day's code changes (drought began
+  under morning code); live book probe filmed EMPTY winning-side asks in the
+  final 10s; new nm= gate-reason telemetry measured no_ask=99/stale_book=75
+  on 174/174 near-misses. VERDICT: seller absence on 5m closes (competition/
+  maker withdrawal), NOT a bot defect. Watch 24-48h; if paper stays dry the
+  question moves to Tier 0 (paper's 0.5s referee cannot see sub-300ms races
+  a live bot could still win — the drought may be speed migration).
+  BAR-AGE FIX AUDIT (user-requested, 2 models): spot_max_bar_age_s 2->5
+  verdicts: Fable 5.0-CORRECT-WITH-SOL-OVERRIDE (strict-subset proof vs the
+  profitable historical config; SOL unit -> 3.0, applied), Opus OVERSTATED-
+  BUT-FIX-CORRECT. RECORD CORRECTION: my '~40% of BTC evals rejected' claim
+  was UNSUPPORTED — the 178 no_datas were ~100% warmup polls, and the 43%
+  nm figure was CLOB book staleness (different feed/knob); true gate cost
+  ~0-4%. Fix stands on merits, justification retracted.
+  Also fixed same night (both auditors converged): close_at now skips
+  synthetic gap-fill bars — a stale price can no longer wear a fresh label
+  (the completed F1 fix). Follow-ups queued: 1h no_outcome give-up should
+  scale with window; nothing guards the 5-10s spot-silence band except the
+  10s feed kill; paper recheck suppresses wrong-side fills live would take
+  (watch live SOL separately at Tier 0).
+
 - 2026-07-31 CONVERGENCE AUDIT (ROUND 3): 8 auditors — 2 models line-by-line
   over the SAME core (adversarial pair) + 6 per-unit deep audits with live
   probes and data refetches. RESULT: decision core CLEAN again (both models,

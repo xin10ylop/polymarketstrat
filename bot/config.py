@@ -109,10 +109,14 @@ class Config:
     # Sparse-tape guards (audit F1/F3, SOL): refuse bars older than this,
     # and require the barrier to exceed N spot ticks — below the input
     # resolution, a 99.5% fv is model confidence, not market information.
-    # 5.0: with tau now computed FROM the bar's own second (the real F1 fix),
-    # an older bar is priced at its true horizon — the cutoff only guards
-    # against unrepresentative bars. 2.0 was over-tight: it rejected ~40% of
-    # BTC evals on ordinary 2-3s trade lulls (measured live, nm diagnostic).
+    # 5.0, verified by two independent audits (07-31): with tau computed FROM
+    # the bar's own second, every admitted signal is a STRICT SUBSET of the
+    # config that earned the profitable record (older bar -> longer horizon ->
+    # less extreme fv, self-limiting), and bar mechanics bake in ~1-2s of
+    # phantom age (second-truncated stamps + completion-on-next-trade). An
+    # earlier "~40% of evals" justification was WRONG (warmup polls + CLOB
+    # book staleness misattributed) — see runbook 07-31. SOL unit overrides
+    # to 3.0 (sparse tape, no record of its own to anchor the subset proof).
     spot_max_bar_age_s: float = _env("SPOT_MAX_BAR_AGE_S", 5.0, float)
     spot_tick: float = _env("SPOT_TICK", 0.01, float)
     snipe_min_ticks: float = _env("SNIPE_MIN_TICKS", 3.0, float)
