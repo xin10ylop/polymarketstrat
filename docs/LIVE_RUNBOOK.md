@@ -129,6 +129,21 @@ them in that order.
 
 ### Reading log (append each check)
 
+- 2026-07-31 1h HOURLY FAMILY discovered (gamma series API): btc/eth/sol/xrp
+  hourly up-or-down series, dated ET slugs (bitcoin-up-or-down-july-31-2026-5pm-et).
+  Volumes: BTC median $24.5k/window (9x the 5m windows, ZERO dead hours),
+  ETH $5.9k. Tape (Jun 30-Jul 30, 696 windows/coin):
+  BTC-1h: ALIVE — bot-as-is +9.47c/sh, 96.8% win, n=31 (1.1/day), halves
+  +8.00/+10.71, ALL variants positive, competition tax ~9% (vs 47% on 5m).
+  Paper bot shipped: polybot-snipe-btc1h.service (SLUG_STYLE=et_hourly; the
+  slug generator is validated against all 744 real month slugs, 0 mismatches).
+  Gate: 2 weeks paper from deploy (~Aug 14): ev>=+5c weighted, both-halves
+  positive, no unexplained divergence from this tape.
+  ETH-1h: leaning positive (+8.4c, n=8) but FAR too thin — parked; revisit
+  alongside eth-15m after btc-15m/btc-1h paper gates.
+  Also catalogued for later: hourly SOL/XRP, daily up/down on stocks
+  (TSLA/AAPL/...), forex, metals, indices — none tape-tested yet.
+
 - 2026-07-31 15m FAMILY, ETH + SOL (same month, same tape method):
   ETH-15m: MARGINAL-PROMISING, parked. Bot-as-is +2.95c/71% on n=62
   (2.1/day) but halves +7.68/-0.21 = not consistent. The one both-halves

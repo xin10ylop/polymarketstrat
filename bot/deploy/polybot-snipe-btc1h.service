@@ -1,0 +1,27 @@
+[Unit]
+Description=Polymarket paper bot - SNIPE only (btc 1h hourly family)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/polymarketstrat
+Environment=BOT_MODE=paper
+Environment=SPOT_FEED=coinbase
+Environment=COIN=btc
+Environment=FAMILY=1h
+Environment=WINDOW_SECS=3600
+Environment=SLUG_PREFIX=bitcoin-up-or-down
+Environment=SLUG_STYLE=et_hourly
+Environment=TOLL_ENABLED=0
+Environment=SNIPE_WARMUP_S=1800
+Environment=MAX_DAILY_LOSS=250
+Environment=BOT_DATA_DIR=/opt/polymarketstrat/bot/data/snipe-btc1h
+Environment=LOG_LEVEL=INFO
+ExecStart=/opt/polymarketstrat/venv/bin/python -m bot.main
+Restart=always
+RestartSec=5
+MemoryMax=150M
+
+[Install]
+WantedBy=multi-user.target

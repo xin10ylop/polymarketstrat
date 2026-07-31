@@ -94,7 +94,8 @@ class ClobFeed:
         for wts in wanted:
             if wts in self.markets:
                 continue
-            slug = f"{self.cfg.slug_prefix}-{wts}"
+            from bot.config import slug_for
+            slug = slug_for(self.cfg, wts)
             url = f"{self.cfg.gamma_url}/markets?slug={slug}"
             async with self._session.get(url, timeout=aiohttp.ClientTimeout(total=10)) as r:
                 arr = await r.json()

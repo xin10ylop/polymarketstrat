@@ -73,7 +73,8 @@ async def settlement_healer(cfg, ledger):
             if time.time() - tried.get(wts, 0) < 3600:
                 continue
             tried[wts] = time.time()
-            slug = f"{cfg.slug_prefix}-{wts}"
+            from bot.config import slug_for
+            slug = slug_for(cfg, wts)
             url = f"{cfg.gamma_url}/markets?slug={slug}&closed=true"
             try:
                 async with aiohttp.ClientSession(trust_env=True) as s:

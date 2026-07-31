@@ -20,9 +20,22 @@ _COIN = os.environ.get("COIN", "btc").lower()   # btc | eth | sol | xrp | doge
 class Config:
     mode: str = _env("BOT_MODE", "paper")            # paper | live
     coin: str = _COIN
-    family: str = _env("FAMILY", "5m")               # 5m | 15m
+    family: str = _env("FAMILY", "5m")               # 5m | 15m | 1h
     window_secs: int = _env("WINDOW_SECS", 300, int)  # 900 for the 15m family
     slug_prefix: str = _env("SLUG_PREFIX", f"{_COIN}-updown-5m")
+    # wts: <prefix>-<window start epoch> (5m/15m families)
+    # et_hourly: <prefix>-<month>-<day>-<year>-<h>{am,pm}-et (1h family)
+    slug_style: str = _env("SLUG_STYLE", "wts")
+
+
+def slug_for(cfg, wts: int) -> str:
+    if cfg.slug_style == "et_hourly":
+        from datetime import datetime
+        from zoneinfo import ZoneInfo
+        t = datetime.fromtimestamp(wts, tz=ZoneInfo("America/New_York"))
+        hr = t.strftime("%I%p").lstrip("0").lower()
+        return f"{cfg.slug_prefix}-{t.strftime('%B').lower()}-{t.day}-{t.year}-{hr}-et"
+    return f"{cfg.slug_prefix}-{wts}"
 
     # --- endpoints ---
     gamma_url: str = "https://gamma-api.polymarket.com"
