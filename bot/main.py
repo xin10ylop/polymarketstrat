@@ -135,7 +135,7 @@ async def status(cfg, ledger, oracle, spot, clob, toll, snipe):
         s = ledger.summary()
         log.info("STATUS pnl_today=%.2f oracle=%.2f(%s, %.1fs) spot=%.2f basis=%s "
                  "markets=%d clip=%.0f pre[on=%d placed=%d ok=%d wrong=%d mcxl=%d gcxl=%d] "
-                 "snipe[evals=%d nodata=%d near=%d gate=%d sig=%d lastfv=%s] fills=%s",
+                 "snipe[evals=%d nodata=%d near=%d nm=%s gate=%d sig=%d lastfv=%s] fills=%s",
                  ledger.realized_pnl_today(),
                  oracle.last_price or 0, "DEGRADED" if oracle.degraded else "ok",
                  oracle.staleness(), spot.last_price or 0,
@@ -143,7 +143,8 @@ async def status(cfg, ledger, oracle, spot, clob, toll, snipe):
                  len(clob.markets), toll.clip,
                  1 if cfg.toll_pre_position else 0, toll.pre_placed, toll.pre_correct,
                  toll.pre_wrong, toll.pre_marginal_cancel, toll.pre_guard_cancel,
-                 snipe.evals, snipe.no_data, snipe.near_misses, snipe.recheck_fail,
+                 snipe.evals, snipe.no_data, snipe.near_misses, getattr(snipe, 'nm', {}),
+                 snipe.recheck_fail,
                  snipe.signals,
                  f"{snipe.last_fv:.4f}" if snipe.last_fv is not None else "n/a", s)
 

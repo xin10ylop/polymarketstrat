@@ -173,13 +173,28 @@ class SnipeStrategy:
 
     def _ask_ok(self, st):
         """The single entry/recheck gate predicate (audit M4: the recheck must
-        not be a weaker subset of the entry check)."""
-        return not (st is None or not st.book_fresh(self.cfg.book_max_age_s)
-                    or st.best_ask is None
-                    or st.best_ask > self.cfg.snipe_ask_max
-                    or st.best_ask < self.cfg.snipe_price_floor
-                    or st.best_ask_size < self.cfg.snipe_min_ask_size
-                    or st.best_ask_size > self.cfg.snipe_skip_ask_above)
+        not be a weaker subset of the entry check). Tallies WHY it rejects so
+        a fill drought is diagnosable from the STATUS line alone."""
+        if not hasattr(self, "nm"):
+            self.nm = {}
+        if st is None:
+            r = "nostate"
+        elif not st.book_fresh(self.cfg.book_max_age_s):
+            r = "stale_book"
+        elif st.best_ask is None:
+            r = "no_ask"
+        elif st.best_ask > self.cfg.snipe_ask_max:
+            r = "px_high"
+        elif st.best_ask < self.cfg.snipe_price_floor:
+            r = "px_floor"
+        elif st.best_ask_size < self.cfg.snipe_min_ask_size:
+            r = "too_small"
+        elif st.best_ask_size > self.cfg.snipe_skip_ask_above:
+            r = "wall"
+        else:
+            return True
+        self.nm[r] = self.nm.get(r, 0) + 1
+        return False
 
     def _depth_event(self, wts, side, fv, pre, st, filled):
         """Deeper-book research tap: the ask ladder at signal time and after
