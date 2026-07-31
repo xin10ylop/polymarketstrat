@@ -22,7 +22,9 @@ ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 DATA = os.path.join(ROOT, "data")
 OUT = os.path.join(DATA, "fresh")
 COIN = (sys.argv[3] if len(sys.argv) > 3 else "btc").lower()
-SUF = "" if COIN == "btc" else f"_{COIN}"
+FAM = os.environ.get("FRESH_FAMILY", "5m")          # 5m | 15m
+STEP = {"5m": 300, "15m": 900}[FAM]
+SUF = ("" if COIN == "btc" else f"_{COIN}") + ("" if FAM == "5m" else f"_{FAM}")
 GAMMA = "https://gamma-api.polymarket.com/markets?slug={slug}&closed=true"  # closed=true: gamma hides old markets from plain slug queries
 TLX = "https://api.telonex.io/v1/downloads/polymarket/{channel}/{d}"
 
@@ -44,8 +46,8 @@ def gamma_sweep(d0, d1):
     rows, lock, tasks = [], threading.Lock(), queue.Queue()
     for day in days:
         base = int(pd.Timestamp(day, tz="UTC").timestamp())
-        for k in range(288):
-            tasks.put(base + k * 300)
+        for k in range(86400 // STEP):
+            tasks.put(base + k * STEP)
 
     def worker():
         while True:
@@ -53,7 +55,7 @@ def gamma_sweep(d0, d1):
                 wts = tasks.get_nowait()
             except queue.Empty:
                 return
-            slug = f"{COIN}-updown-5m-{wts}"
+            slug = f"{COIN}-updown-{FAM}-{wts}"
             try:
                 req = urllib.request.Request(GAMMA.format(slug=slug),
                                              headers={"User-Agent": "fresh/1.0"})
@@ -73,7 +75,7 @@ def gamma_sweep(d0, d1):
                 up_idx = outcomes.index("Up")
                 result = 0 if float(prices[up_idx]) == 1.0 else 1
                 with lock:
-                    rows.append(dict(slug=slug, wts=wts, family="5m", duration=300,
+                    rows.append(dict(slug=slug, wts=wts, family=FAM, duration=STEP,
                                      result=result,
                                      date=pd.Timestamp(wts, unit="s", tz="UTC").strftime("%Y-%m-%d")))
             except Exception:  # noqa: BLE001 - skip transient failures
