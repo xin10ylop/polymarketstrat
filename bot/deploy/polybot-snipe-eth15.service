@@ -17,6 +17,7 @@ Environment=TOLL_ENABLED=0
 # one both-halves-positive config (+12.4c/sh, n=37) — that IS the experiment
 Environment=SNIPE_FV_MIN=0.999
 Environment=SNIPE_WARMUP_S=1800
+Environment=SNIPE_MAX_CLIP=500
 Environment=MAX_DAILY_LOSS=250
 Environment=BOT_DATA_DIR=/opt/polymarketstrat/bot/data/snipe-eth15
 Environment=LOG_LEVEL=INFO

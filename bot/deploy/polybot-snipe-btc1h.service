@@ -15,6 +15,7 @@ Environment=SLUG_PREFIX=bitcoin-up-or-down
 Environment=SLUG_STYLE=et_hourly
 Environment=TOLL_ENABLED=0
 Environment=SNIPE_WARMUP_S=1800
+Environment=SNIPE_MAX_CLIP=500
 Environment=MAX_DAILY_LOSS=250
 Environment=BOT_DATA_DIR=/opt/polymarketstrat/bot/data/snipe-btc1h
 Environment=LOG_LEVEL=INFO

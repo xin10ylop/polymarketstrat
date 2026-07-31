@@ -27,16 +27,6 @@ class Config:
     # et_hourly: <prefix>-<month>-<day>-<year>-<h>{am,pm}-et (1h family)
     slug_style: str = _env("SLUG_STYLE", "wts")
 
-
-def slug_for(cfg, wts: int) -> str:
-    if cfg.slug_style == "et_hourly":
-        from datetime import datetime
-        from zoneinfo import ZoneInfo
-        t = datetime.fromtimestamp(wts, tz=ZoneInfo("America/New_York"))
-        hr = t.strftime("%I%p").lstrip("0").lower()
-        return f"{cfg.slug_prefix}-{t.strftime('%B').lower()}-{t.day}-{t.year}-{hr}-et"
-    return f"{cfg.slug_prefix}-{wts}"
-
     # --- endpoints ---
     gamma_url: str = "https://gamma-api.polymarket.com"
     clob_url: str = "https://clob.polymarket.com"
@@ -113,7 +103,11 @@ def slug_for(cfg, wts: int) -> str:
     snipe_fv_min: float = _env("SNIPE_FV_MIN", 0.995, float)
     snipe_ask_max: float = 0.97
     snipe_min_ask_size: float = 12.0
-    snipe_max_clip: int = 250              # hard cap: EV collapses above (adverse selection)
+    # Hard cap. 250 default from 5m evidence (EV collapse above: adverse
+    # selection). 15m/1h tapes show the OPPOSITE (sz>250 entries ev>=+5c,
+    # cap binds ~11% of entries) — slower-family paper bots run 500 to
+    # measure the fatter cap during their gates.
+    snipe_max_clip: int = _env("SNIPE_MAX_CLIP", 250, int)
     snipe_skip_ask_above: float = _env("SNIPE_SKIP_ASK_ABOVE", 500.0, float)
     # ^ giant late asks are informed (two audits: >=250-share bucket -2.4c/sh,
     #   first-shot $/day falls with size); refuse to engage walls of offers
@@ -188,6 +182,16 @@ def slug_for(cfg, wts: int) -> str:
     pm_api_secret: str = _env("PM_API_SECRET", "")
     pm_api_passphrase: str = _env("PM_API_PASSPHRASE", "")
     pm_funder: str = _env("PM_FUNDER", "")
+
+
+def slug_for(cfg, wts: int) -> str:
+    if cfg.slug_style == "et_hourly":
+        from datetime import datetime
+        from zoneinfo import ZoneInfo
+        t = datetime.fromtimestamp(wts, tz=ZoneInfo("America/New_York"))
+        hr = t.strftime("%I%p").lstrip("0").lower()
+        return f"{cfg.slug_prefix}-{t.strftime('%B').lower()}-{t.day}-{t.year}-{hr}-et"
+    return f"{cfg.slug_prefix}-{wts}"
 
 
 CFG = Config()

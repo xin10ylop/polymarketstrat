@@ -15,6 +15,7 @@ Environment=SLUG_PREFIX=btc-updown-15m
 Environment=TOLL_ENABLED=0
 # 900s windows: give the vol estimator a full 2x window before trusting it
 Environment=SNIPE_WARMUP_S=1800
+Environment=SNIPE_MAX_CLIP=500
 Environment=MAX_DAILY_LOSS=250
 Environment=BOT_DATA_DIR=/opt/polymarketstrat/bot/data/snipe-btc15
 Environment=LOG_LEVEL=INFO
