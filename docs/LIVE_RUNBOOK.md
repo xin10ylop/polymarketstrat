@@ -144,6 +144,19 @@ them in that order.
   Also catalogued for later: hourly SOL/XRP, daily up/down on stocks
   (TSLA/AAPL/...), forex, metals, indices — none tape-tested yet.
 
+- 2026-07-31 BTC-1h OPPORTUNITY-EXPANSION GRID (wide tape: entries to T-120s,
+  fv down to 0.95): more COUNT exists, not more DOLLARS. T-6s strict: 1.1-1.3/d
+  at +8.6..+9.0c = ~$300/mo. Loosest consistent tier (T-12s): 1.8/d at +5.4c =
+  same ~$293/mo. Everything earlier (T-30/60/120) is second-half NEGATIVE or
+  ~zero (adverse selection eats it). Loosening fv adds ~nothing at T-6 (fv is
+  extreme by then anyway). CONCLUSION: the pot is ~fixed at current 250-sh cap;
+  strict settings capture it in fewer, better trades. Bot stays as-is. The
+  real scaling lever on 1h is SIZE (window vol $24.5k) at the live ladder, not
+  filters. (Curiosity, n=8: px 0.80-0.90 from T-60 = +14.1c both halves.)
+  SOL-1h: DEAD (n=4, -22.7c, half2 collapse; same blind-instrument pattern).
+  XRP-1h: NO TRIGGERS (n=1 in 9 taped days despite $10.4k/window volume) —
+  our signal rarely fires there; park, no bot.
+
 - 2026-07-31 15m FAMILY, ETH + SOL (same month, same tape method):
   ETH-15m: MARGINAL-PROMISING, parked. Bot-as-is +2.95c/71% on n=62
   (2.1/day) but halves +7.68/-0.21 = not consistent. The one both-halves
