@@ -129,6 +129,22 @@ them in that order.
 
 ### Reading log (append each check)
 
+- 2026-07-31 15m FAMILY RE-TEST (fresh month, current instruments) — ALIVE.
+  The old "dead" verdict came from the artifact-corrupted early study
+  ("corrected ~ 0", pre-gate tooling). Fresh candidate tape, btc-updown-15m
+  Jun 30-Jul 30 (2,782 windows; Telonex missing ~192 recent files):
+  BOT-AS-IS (same params, T=900): 151 entries (5.2/day), win 85.4%,
+  +8.52c/sh weighted, +$1,135/29d (~$39/day at <=250sh clips); halves
+  +9.67c/+7.79c. Deep band +26.3c/sh (halves +25.96/+26.48, n=40).
+  Competition tax (gate-off vs gated) only ~12% vs 5m's ~47% — few snipers
+  watch 15m. Current timing already optimal (T-12/T-9/T-4.5/T-3 variants all
+  <= baseline pnl). Same caveats as all replica work (understating proxy
+  instrument; one coin; one month). ACTION: paper bot deployed as referee —
+  bot/deploy/polybot-snipe-btc15.service (FAMILY=15m, WINDOW_SECS=900,
+  SLUG_PREFIX=btc-updown-15m, warmup 1800s); code generalized (WINDOW_SECS
+  env). Its own 2-week paper gate before any live thought. If paper
+  corroborates, 15m adds ~40% to btc capacity at LOWER competition.
+
 - 2026-07-31 IMPROVEMENT SEARCH (post-audit; "search for everything").
   Method: candidate tapes (EVERY qualifying touch per window, loose gates,
   scripts/candidate_tape.py) over 41d eth/sol/doge + 12d btc from Telonex,

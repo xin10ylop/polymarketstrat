@@ -20,8 +20,8 @@ _COIN = os.environ.get("COIN", "btc").lower()   # btc | eth | sol | xrp | doge
 class Config:
     mode: str = _env("BOT_MODE", "paper")            # paper | live
     coin: str = _COIN
-    family: str = "5m"
-    window_secs: int = 300
+    family: str = _env("FAMILY", "5m")               # 5m | 15m
+    window_secs: int = _env("WINDOW_SECS", 300, int)  # 900 for the 15m family
     slug_prefix: str = _env("SLUG_PREFIX", f"{_COIN}-updown-5m")
 
     # --- endpoints ---
