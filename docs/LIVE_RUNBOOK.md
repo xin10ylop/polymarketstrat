@@ -129,6 +129,44 @@ them in that order.
 
 ### Reading log (append each check)
 
+- 2026-07-31 IMPROVEMENT SEARCH (post-audit; "search for everything").
+  Method: candidate tapes (EVERY qualifying touch per window, loose gates,
+  scripts/candidate_tape.py) over 41d eth/sol/doge + 12d btc from Telonex,
+  exact re-simulation of 12 parameter variants per coin
+  (scripts/analyze_tape.py), split-half day validation, and a TWO-WITNESS
+  rule: no change unless the replica tape AND the true-feed ledger agree.
+  RESULTS — NO CHANGES APPLIED ANYWHERE, each rejection evidenced:
+  * Time-of-day: no losing 4h block survives split-half on any coin, and the
+    ledgers show every block net-positive (btc blocks $126-655; eth all
+    positive incl. the 38%-win 12-16 block, which is +EV via cheap entries).
+    Apparent bad blocks = regime days (Jul 24) landing in one half. Rejected.
+  * Day-of-week: "bad" days appear at chance rate (~25% per dow per coin of
+    both-halves-negative under zero edge) and contradict across coins
+    (eth Fri/Sun weak vs doge Fri/Sun strongest). Rejected.
+  * BTC scans: everything loses or ties. ask_max 0.95 LOOKS +$600 better but
+    is the known instrument artifact (replica reads 0.90-0.98 band -2.2c
+    where the true-feed ledger prints +3.6c on 114 fills). Floors -$450 to
+    -$630 (deep band remains the engine). Gate-off fantasy = 1.9x gated pnl
+    (measured cost of rival takers). Rejected all.
+  * ETH scans: two split-half survivors (fv_min 0.999 +$670 vs +$442;
+    eval-from-T-3 +$802) REFUTED by the ledger early/late bucket test:
+    real early fills (T-6..T-3) EARN MORE than late fills on both coins
+    (eth +14.31c vs +12.22c; btc +8.00c vs +6.73c). The replica's
+    early-entry weakness is proxy-signal noise at long horizons, not market
+    reality. Rejected; do NOT re-tune eth off the replica.
+  * SOL: tape baseline -4.57c is the BLIND INSTRUMENT (feed-noise ratio
+    1.03), not the strategy — ledger (true feed) prints +9.4c/96% on n=25.
+    No tape-based tuning is valid for sol, ever; ledger is sole referee.
+  * DOGE: deployed floor-0.90 config positive in both halves (+2.03c overall,
+    97.8% win, n=185). fv_min 0.999 improved both halves (+$297, n=127) but
+    NOT applied: the live paper bot's issue is zero fills in 4d (true-feed
+    top-band asks are scarcer than the proxy suggested) — tightening a
+    silent bot deepens silence. Revisit both at its 2-week verdict (~Aug 10);
+    if still ~0 fills, retire the bot.
+  CONCLUSION: current per-coin configs sit at their measured optima; the
+  search's value is the documented proof that no obvious knob was left
+  unexamined. Droplet upgraded to the audit-fix build (d05685f) same day.
+
 - 2026-07-30 EXTERNAL ADVERSARIAL AUDIT (independent Opus-model auditor,
   full code + docs read; verdict NO-GO) — 19 findings, 5 critical, ALL
   verified against the code and ALL blockers fixed the same day:
