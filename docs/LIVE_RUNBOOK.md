@@ -129,6 +129,18 @@ them in that order.
 
 ### Reading log (append each check)
 
+- 2026-07-31 15m FAMILY, ETH + SOL (same month, same tape method):
+  ETH-15m: MARGINAL-PROMISING, parked. Bot-as-is +2.95c/71% on n=62
+  (2.1/day) but halves +7.68/-0.21 = not consistent. The one both-halves
+  survivor: fv_min 0.999 -> +12.4c (+13.0/+11.9, n=37, +$216/29d). Deep band
+  +18.5c both halves; mid band toxic (-33c). Volume real (~$3.6k/window).
+  DECISION: no bot now — small n, and the 5m lesson (ETH tape candidates
+  refuted by the true-feed ledger) demands humility. Revisit once BTC-15m's
+  paper gate proves the family transplant; if so, trial eth-15m with
+  SNIPE_FV_MIN=0.999.
+  SOL-15m: NO. Instrument blind for sol (feed ratio 1.03), halves flip sign
+  everywhere, volume dust (~$745/window). Do not revisit without new reason.
+
 - 2026-07-31 15m FAMILY RE-TEST (fresh month, current instruments) — ALIVE.
   The old "dead" verdict came from the artifact-corrupted early study
   ("corrected ~ 0", pre-gate tooling). Fresh candidate tape, btc-updown-15m
