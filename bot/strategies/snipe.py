@@ -10,6 +10,7 @@ The signal lag is enforced deliberately: the backtest was validated on 1s-old
 data, so acting on anything fresher would make paper results *optimistic*.
 """
 import asyncio
+import json
 import logging
 import math
 import time
@@ -115,6 +116,7 @@ class SnipeStrategy:
         w["attempts"] += 1
         if w["attempts"] > 1:
             self.retries += 1
+        depth_pre = sorted(st.asks.items())[:5]
         if self.cfg.snipe_take_recheck_s > 0 and self.cfg.mode != "live":
             # PAPER-ONLY live-fidelity gate: a real order needs ~network + 250ms
             # exchange hold to arrive; only fill if the ask is still there
@@ -129,6 +131,8 @@ class SnipeStrategy:
                     or st.best_ask > self.cfg.snipe_ask_max
                     or st.best_ask_size < self.cfg.snipe_min_ask_size):
                 self.recheck_fail += 1
+                self._depth_event(wts, side, fv, depth_pre,
+                                  self.clob.state(token), 0.0)
                 return False
         remaining = min(self.cfg.snipe_max_clip - w["shares"],
                         (self.cfg.snipe_window_max_cost - w["cost"]) / max(st.best_ask, 0.01))
@@ -148,4 +152,20 @@ class SnipeStrategy:
             log.info("w%s SNIPE %s att=%d fv=%.4f avg=%.3f x%.1f (S=%.2f K=%.2f "
                      "basis=%.6f vol=%.2e tau=%.1f)", wts, side, w["attempts"], fv,
                      order.price, order.filled, s_adj, k, basis, vol, tau)
+        self._depth_event(wts, side, fv, depth_pre, st,
+                          order.filled if order else 0.0)
         return False
+
+    def _depth_event(self, wts, side, fv, pre, st, filled):
+        """Deeper-book research tap: the ask ladder at signal time and after
+        the latency gate. Passive — the counterfactual for layers the strategy
+        never takes; settlement joins outcomes in later, off-line."""
+        try:
+            post = sorted(st.asks.items())[:5] if st is not None else []
+            self.ledger.event("depth", json.dumps(
+                {"w": wts, "s": side, "fv": round(fv, 4),
+                 "pre": [[p, round(z, 1)] for p, z in pre],
+                 "post": [[p, round(z, 1)] for p, z in post],
+                 "fill": round(filled, 1)}, separators=(",", ":")))
+        except Exception:  # noqa: BLE001 - research logging must never break trading
+            log.debug("depth event failed w%s", wts)

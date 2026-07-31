@@ -144,6 +144,16 @@ them in that order.
   Also catalogued for later: hourly SOL/XRP, daily up/down on stocks
   (TSLA/AAPL/...), forex, metals, indices — none tape-tested yet.
 
+- 2026-07-31 DEPTH RECORDER shipped (all snipe bots): every take attempt now
+  logs a 'depth' event — top-5 ask ladder at signal time AND after the 0.5s
+  latency gate, plus filled qty. Passive (zero behavior change; report
+  filter already excludes it). Purpose: measure layer-2/3 profitability
+  offline (join settlements for outcomes) = the deeper-book counterfactual,
+  including the key case where we LOSE the front-layer race but layers 2-3
+  survive. Analyze after ~1 week of events. If layers vote profitable, ship
+  a separate experimental walking bot (own unit + ledger, A/B) — do NOT
+  fold walking into the qualified bots.
+
 - 2026-07-31 BTC-1h OPPORTUNITY-EXPANSION GRID (wide tape: entries to T-120s,
   fv down to 0.95): more COUNT exists, not more DOLLARS. T-6s strict: 1.1-1.3/d
   at +8.6..+9.0c = ~$300/mo. Loosest consistent tier (T-12s): 1.8/d at +5.4c =
