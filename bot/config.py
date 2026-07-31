@@ -97,7 +97,7 @@ class Config:
     # is real, and an artificial pre-send wait would forfeit the race. 0 = off.
     snipe_take_recheck_s: float = _env("SNIPE_TAKE_RECHECK_S", 0.5, float)
     snipe_signal_lag_s: float = 1.0        # act on spot data at least 1s old (validated latency)
-    snipe_fv_min: float = 0.995
+    snipe_fv_min: float = _env("SNIPE_FV_MIN", 0.995, float)
     snipe_ask_max: float = 0.97
     snipe_min_ask_size: float = 12.0
     snipe_max_clip: int = 250              # hard cap: EV collapses above (adverse selection)

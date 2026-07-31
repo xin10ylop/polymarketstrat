@@ -1,0 +1,29 @@
+[Unit]
+Description=Polymarket paper bot - SNIPE only (eth 15m family, strict-signal experiment)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/polymarketstrat
+Environment=BOT_MODE=paper
+Environment=SPOT_FEED=coinbase
+Environment=COIN=eth
+Environment=FAMILY=15m
+Environment=WINDOW_SECS=900
+Environment=SLUG_PREFIX=eth-updown-15m
+Environment=TOLL_ENABLED=0
+# tape evidence (Jun 30-Jul 30): bot-as-is flat on eth-15m; fv>=0.999 was the
+# one both-halves-positive config (+12.4c/sh, n=37) — that IS the experiment
+Environment=SNIPE_FV_MIN=0.999
+Environment=SNIPE_WARMUP_S=1800
+Environment=MAX_DAILY_LOSS=250
+Environment=BOT_DATA_DIR=/opt/polymarketstrat/bot/data/snipe-eth15
+Environment=LOG_LEVEL=INFO
+ExecStart=/opt/polymarketstrat/venv/bin/python -m bot.main
+Restart=always
+RestartSec=5
+MemoryMax=150M
+
+[Install]
+WantedBy=multi-user.target
