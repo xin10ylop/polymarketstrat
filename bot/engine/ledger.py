@@ -100,10 +100,40 @@ class Ledger:
             "ORDER BY ts DESC LIMIT ?", (n,)).fetchall()
         return sum(p for (p,) in rows), len(rows)
 
-    def unmarked_old_fills(self, older_than_s=900):
+    def unmarked_old_fills(self, older_than_s=900, newer_than_s=172800):
+        """Unmarked fills in the recent window only: this feeds the
+        'reconciler falling behind' halt, which must reflect the reconciler's
+        CURRENT health — ancient windows Polymarket never resolved (rare
+        no_outcome events) are the healer's job, not a reason to halt."""
+        now = time.time()
         return self.db.execute(
-            "SELECT COUNT(*) FROM fills WHERE pnl IS NULL AND ts < ?",
-            (time.time() - older_than_s,)).fetchone()[0]
+            "SELECT COUNT(*) FROM fills WHERE pnl IS NULL AND ts < ? AND ts > ?",
+            (now - older_than_s, now - newer_than_s)).fetchone()[0]
+
+    def unmarked_windows(self, older_than_s=900, max_age_s=7 * 86400):
+        """Distinct windows with unmarked fills, for the settlement healer."""
+        now = time.time()
+        return [r[0] for r in self.db.execute(
+            "SELECT DISTINCT wts FROM fills WHERE pnl IS NULL "
+            "AND ts < ? AND ts > ?",
+            (now - older_than_s, now - max_age_s)).fetchall()]
+
+    def mark_window_by_token(self, wts, win_token, winner):
+        """Late settlement: mark a window's fills against the winning token id
+        (used when the market has long left the live discovery set)."""
+        self.db.execute(
+            "INSERT OR REPLACE INTO settlements VALUES(?,?,?,?,?)",
+            (wts, winner, None, 0, time.time()))
+        n = 0
+        for rowid, tok, px, sz, fee in self.db.execute(
+                "SELECT rowid,token,price,size,fee FROM fills "
+                "WHERE wts=? AND settle IS NULL", (wts,)).fetchall():
+            settle = 1.0 if tok == win_token else 0.0
+            self.db.execute("UPDATE fills SET settle=?, pnl=? WHERE rowid=?",
+                            (settle, (settle - px) * sz - fee, rowid))
+            n += 1
+        self.db.commit()
+        return n
 
     def snipe_fills_since_trailing_halt(self):
         """Settled snipe fills newer than the most recent trailing-PnL halt

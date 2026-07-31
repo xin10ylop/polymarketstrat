@@ -58,6 +58,49 @@ async def reconciler(cfg, clob, ledger, toll, oracle):
         await asyncio.sleep(10)
 
 
+async def settlement_healer(cfg, ledger):
+    """Second-chance settlement: windows whose outcome was missing when the
+    live reconciler gave up (Polymarket occasionally publishes results late)
+    leave fills unmarked forever, understating PnL. Re-query gamma hourly for
+    any unmarked window (<=7 days old) and mark late results by token id."""
+    import json as _json
+
+    import aiohttp
+    tried = {}
+    while True:
+        await asyncio.sleep(120)
+        for wts in ledger.unmarked_windows():
+            if time.time() - tried.get(wts, 0) < 3600:
+                continue
+            tried[wts] = time.time()
+            slug = f"{cfg.slug_prefix}-{wts}"
+            url = f"{cfg.gamma_url}/markets?slug={slug}&closed=true"
+            try:
+                async with aiohttp.ClientSession(trust_env=True) as s:
+                    async with s.get(url, timeout=aiohttp.ClientTimeout(total=10)) as r:
+                        arr = await r.json()
+                if not arr:
+                    continue
+                m = arr[0]
+                op = m.get("outcomePrices")
+                prices = _json.loads(op) if isinstance(op, str) else op
+                if not prices or float(max(prices, key=float)) != 1.0:
+                    continue
+                outcomes = m.get("outcomes")
+                outcomes = _json.loads(outcomes) if isinstance(outcomes, str) else outcomes
+                toks = m.get("clobTokenIds")
+                toks = _json.loads(toks) if isinstance(toks, str) else toks
+                idx = [float(p) for p in prices].index(1.0)
+                winner = outcomes[idx].lower()
+                n = ledger.mark_window_by_token(wts, toks[idx], winner)
+                ledger.event("late_settlement", f"w{wts} {winner} ({n} fills)")
+                log.warning("late settlement healed w%s: %s (%d fills marked)",
+                            wts, winner, n)
+            except Exception as e:  # noqa: BLE001
+                log.debug("healer %s: %s", slug, e)
+        await asyncio.sleep(3600)
+
+
 async def status(cfg, ledger, oracle, spot, clob, toll, snipe):
     while True:
         await asyncio.sleep(cfg.status_every_s)
@@ -113,6 +156,7 @@ async def amain():
         asyncio.create_task(toll.run(), name="toll"),
         asyncio.create_task(snipe.run(), name="snipe"),
         asyncio.create_task(reconciler(CFG, clob, ledger, toll, oracle), name="reconciler"),
+        asyncio.create_task(settlement_healer(CFG, ledger), name="healer"),
         asyncio.create_task(status(CFG, ledger, oracle, spot, clob, toll, snipe), name="status"),
     ]
     if reconciler_task is not None:
