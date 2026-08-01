@@ -146,8 +146,14 @@ class SnipeStrategy:
         # the best level): cap size at the liquidity in front of the first
         # giant level, so neither paper nor live extends into the wall
         pre_wall = 0.0
+        limit = self.cfg.snipe_ask_max
         for px in sorted(p for p in st.asks if p <= self.cfg.snipe_ask_max):
             if st.asks[px] > self.cfg.snipe_skip_ask_above:
+                # cap the sweep PRICE at the wall, not just the size: retries
+                # with the pre-wall level consumed would otherwise spill INTO
+                # the wall (fill-economics audit S5 — the informed fills the
+                # gate exists to refuse). Applies to paper and live alike.
+                limit = min(limit, round(px - 0.001, 3))
                 break
             pre_wall += st.asks[px]
         remaining = min(remaining, pre_wall)
@@ -157,9 +163,9 @@ class SnipeStrategy:
             # exchange I/O off the event loop: a blocking POST in here would
             # blind every feed during the most latency-critical seconds
             order = await asyncio.to_thread(
-                self.exec.take, wts, "snipe", token, self.cfg.snipe_ask_max, remaining)
+                self.exec.take, wts, "snipe", token, limit, remaining)
         else:
-            order = self.exec.take(wts, "snipe", token, self.cfg.snipe_ask_max, remaining)
+            order = self.exec.take(wts, "snipe", token, limit, remaining)
         if order:
             self.signals += 1
             w["shares"] += order.filled
