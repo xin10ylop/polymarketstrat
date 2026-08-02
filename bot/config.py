@@ -180,6 +180,13 @@ class Config:
     # A restart = the human chose to resume; judge the NEW trading.
     snipe_trailing_rearm_fills: int = _env("SNIPE_TRAILING_REARM", 10, int)
     max_unmarked_fills: int = 5            # halt if this many old fills lack settlement
+    # How long past window close the reconciler keeps polling gamma for the
+    # official outcome before giving up (no_outcome). 5m/15m publish well
+    # inside 10 min, but the 1h family resolves via UMA proposal ~11-13 min
+    # after the hour (measured closedTime 17:12:30 / 20:11:17 for 17:00 /
+    # 20:00 closes, 2026-08-02) — 600s missed EVERY hourly outcome. The 1h
+    # unit sets 1800.
+    outcome_patience_s: float = _env("OUTCOME_PATIENCE_S", 600.0, float)
     oracle_max_staleness_s: float = 5.0    # oracle feed silence -> degraded, no trading
     feed_max_silence_s: float = 10.0       # spot feed silence pauses the snipe
 

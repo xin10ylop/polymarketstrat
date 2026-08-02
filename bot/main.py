@@ -40,8 +40,8 @@ async def reconciler(cfg, clob, ledger, toll, oracle):
                 continue
             winner = await clob.fetch_outcome(mk)
             if winner is None:
-                if now > wts + cfg.window_secs + 600:
-                    done.add(wts)   # give up after 10 min; leave fills unmarked
+                if now > wts + cfg.window_secs + cfg.outcome_patience_s:
+                    done.add(wts)   # out of patience; leave fills unmarked
                     ledger.event("no_outcome", mk.slug)
                 continue
             oracle_winner = toll.oracle_calls.get(wts)

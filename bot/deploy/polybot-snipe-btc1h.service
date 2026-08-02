@@ -18,6 +18,9 @@ Environment=SLUG_STYLE=et_hourly
 Environment=ORACLE_AUTHORITATIVE=0
 Environment=TOLL_ENABLED=0
 Environment=BOOK_MAX_AGE_S=45
+# hourly outcomes publish via UMA proposal ~11-13 min after the hour; the
+# default 600s reconciler patience gave up 2 min before every publish
+Environment=OUTCOME_PATIENCE_S=1800
 Environment=SNIPE_WARMUP_S=1800
 Environment=SNIPE_MAX_CLIP=500
 Environment=SNIPE_WINDOW_MAX_COST=500
