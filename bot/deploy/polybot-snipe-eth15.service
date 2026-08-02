@@ -18,6 +18,7 @@ Environment=TOLL_ENABLED=0
 # Runs DEFAULT signal settings (audit round 3 demolished the fv=0.999 tape
 # claim: 4 lucky large fills carried it, CI spans zero, and the runbook's own
 # law says never tune eth off the replica). Neutral true-feed evidence only.
+Environment=BOOK_MAX_AGE_S=15
 Environment=SNIPE_WARMUP_S=1800
 Environment=SNIPE_MAX_CLIP=500
 Environment=SNIPE_WINDOW_MAX_COST=500
