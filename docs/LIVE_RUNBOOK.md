@@ -138,6 +138,21 @@ them in that order.
 
 ### Reading log (append each check)
 
+- 2026-08-02 BOOK-FRESHNESS AUDIT (Telonex, self-audit of the 45s/15s widening):
+  Archive truth at eval instants (T-6..T-1.5): book age >3s on only 8.5%
+  (btc15 weekday), 7.8% (btc15 WEEKEND — no weekend effect), 9.1% (eth15),
+  17% (btc1h, p90 8.9s). Live bots measured 33-59% stale — 3-6x the market
+  truth. CORRECTED DIAGNOSIS: staleness is mostly RECEIVER-SIDE (six bots'
+  ws clients on one 512MB box applying updates in bursts), not market quiet.
+  WIDENING STANDS as safe+useful: across true market gaps >3s the best ask
+  is IDENTICAL on resume 88.8-93.4% of the time; paper recheck + FAK miss
+  semantics + official settlement bound any phantom risk; and receiver
+  bursts resolve in seconds, far under the new tolerances. IMPLICATIONS:
+  (1) live Amsterdam box (one bot, no contention) will see MORE than NYC
+  paper — another conservative bias in the record; (2) NYC droplet resize
+  is the structural fix if slow-family fills matter pre-live; (3) my
+  'quiet market' framing was half-right, receiver load was the other half.
+
 - 2026-07-31 1h HOURLY FAMILY discovered (gamma series API): btc/eth/sol/xrp
   hourly up-or-down series, dated ET slugs (bitcoin-up-or-down-july-31-2026-5pm-et).
   Volumes: BTC median $24.5k/window (9x the 5m windows, ZERO dead hours),
