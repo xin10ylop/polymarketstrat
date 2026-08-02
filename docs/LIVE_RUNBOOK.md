@@ -575,3 +575,37 @@ them in that order.
   NO Kalshi bot, NO recorder — do not revisit without evidence the MM regime
   changed. Data archived in user's B2 (kalshi-nico-0826); reduced tapes in
   session scratchpad (reduced/, reduced_books2/, tw_cache.parquet).
+
+- 2026-08-02 KALSHI ADDENDUM — THE EDGE MATCH (user pushback: "kalshi doesn't
+  work exactly like polymarket, search the differences"): user was right.
+  Re-checks first: fee semantics verified (taker ceil(0.07*P*(1-P)), maker 25%
+  of that; crypto series may carry higher multipliers — worse for taking,
+  immaterial here); trade side semantics verified against API docs (my
+  taker_won read was correct); semantics-FREE both-sides bound on the decided
+  pool = $52/day BTC — the no-trading verdict stands under any field
+  interpretation. Maker-side measured: $532/day BTC decided-endgame maker
+  harvest at median 0.999 acquisition = queue-priority MM business vs pro
+  firms (Kalshi runs a live Liquidity Incentive Program through Sep 2026);
+  not our lane. THE FINDING — cross-venue signal: joined all matched
+  quarter-hour windows Jun30-Jul29 (Kalshi KX{BTC,ETH}15M trades tape vs our
+  Polymarket 15m Telonex quote archive; 2,736 BTC + 2,709 ETH windows). When
+  Polymarket offers a side at 0.90-0.97 near the close, Kalshi's concurrent
+  same-side price separates gold from poison: T-30s BTC — Kalshi>=0.985:
+  n=196, 100% win, +5.3c/sh; Kalshi<0.95: n=38, 57.9% win, -35.7c/sh. T-10s
+  dissent: 12.9% win, -80.7c/sh (ETH replicates: 100%/+5.6 vs 47.6%/-45.8 at
+  T-30). Kalshi's pro-priced book is an ORACLE for our venue's 15m windows.
+  Caveats: outcome labels are Kalshi's (BRTI TWAP) not Chainlink — dissent
+  buckets are 26-78% knife windows where labels may flip, but a <1bp-margin
+  window is ~coinflip under either source vs 0.90-0.97 cost, so the veto
+  survives label noise; tape-level top-of-book, signal question not fill
+  question; overlap with our own spot-fv gate unmeasured (bot fills start
+  Jul 31, Kalshi data ends Jul 30 — no direct backtest possible). Live
+  feasibility verified: api.elections.kalshi.com/trade-api/v2 serves market
+  list + FULL orderbook UNAUTHENTICATED, 0.2-0.5s, no account needed.
+  PLAN (staged, fidelity law): (1) add Kalshi feed to the two 15m paper bots
+  as TELEMETRY ONLY — log concurrent Kalshi same-side price on every take
+  attempt + depth event; zero behavior change, gate undisturbed; (2) after
+  1-2 weeks measure on OUR fills: losing fills with Kalshi dissent at entry
+  vs winners; (3) enable dissent-veto (and evaluate confirm-relaxation for
+  more fills) only on that evidence. Kalshi is a signal source, not a venue:
+  no account, no trading, no cost.
