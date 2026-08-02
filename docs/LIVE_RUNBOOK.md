@@ -52,8 +52,17 @@ zero-incident week; down one rung after a losing week. Change = edit
 
 ## Go-live sequence (DO NOT REORDER)
 
-1. **Server**: non-US VPS (US IPs cannot place orders). Provision like the
-   paper droplet: clone repo, `python3 -m venv venv`,
+1. **Server**: non-US, non-restricted VPS. REGION DECISION (researched
+   2026-08-02; CLOB origin = AWS eu-west-2 London): PRIMARY = DigitalOcean
+   AMS3 Amsterdam (~8ms; NL is frontend-close-only but CLOB API open — KSA
+   crackdown ongoing, so treat as revocable) -> FALLBACK = Vultr Madrid or
+   Stockholm (~28ms, clean list). Blocked (do NOT use): US, UK, DE, FR, IT,
+   BE, PL, PT, HU, SG, TW, TH, AU, CN, CA(ON/AB/BC/QC). Before committing
+   ANY region (hourly billing = ~1 cent): POST {} to clob /order — 400/401
+   = region works, 403/HTML = blocked, destroy; and check dynamic-endpoint
+   TTFB ~0.02-0.06s. If the region dies mid-live, the H1 rejection fix
+   halts cleanly (books nothing); snapshot-migrate to fallback. Provision
+   like the paper droplet: clone repo, `python3 -m venv venv`,
    `venv/bin/pip install aiohttp py-clob-client-v2`, run `venv/bin/python -m
    bot.preflight` (all PASS required), install chrony.
 2. **Secrets**: `mkdir -p /etc/polybot && cp bot/deploy/live.env.template
