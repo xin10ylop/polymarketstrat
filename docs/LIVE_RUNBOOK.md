@@ -550,3 +550,28 @@ them in that order.
   noise (replica lacks the chainlink feed; marginal-window misclassification
   penalizes the high-price band hardest); paper (true oracle) is the better
   instrument there. WATCH both; no parameter changes.
+
+- 2026-08-02 KALSHI 15M VERDICT (user-supplied archive, 2026-05-02..07-30):
+  full intake of Kalshi KXBTC15M/KXETH15M — 17,004 markets (all finalized),
+  117M trades reduced to a final-180s tape, books (July-complete per source),
+  1m candles, settlement index (== official expiration_value EXACTLY on all
+  8,499 BTC joins — archive internally consistent). Resolution is 60s-TWAP vs
+  60s-TWAP (rules_primary), so outcome knowability at T-t is computable: flip
+  margin m bps needs a ~m*60/t bps spot move in t sec. Cheap-winner scout on
+  taker-bought-winner prints (net 7% Kalshi fee): raw pool looks huge ($50k+/d
+  BTC <=0.90 last-30s) but 90% sits in <1bp final-margin knife windows =
+  hindsight, not edge. Requiring knowability at entry (2s/1bp, 5s/2bp, 10s/3bp,
+  30s/10bp ladder): DECIDED pool = $18/day BTC, $0/day ETH — the entire venue,
+  before competition — vs $100-150/day our Polymarket BTC-5m bot actually
+  nets. Books cross-check (closes the un-taken-ask hole): after dropping
+  sentinel states (best_ask=0 = empty side — verified EMPTY list in raw;
+  bid=1.0 stubs), decided-window min winner ask med 0.997-0.999 across all 6
+  coin-months; <=0.97 sightings ~1/day both coins combined, nearly all
+  single-snapshot flickers or asks resting on DEAD windows (1-7 prints in
+  final 35s); the one active case (JUL22 0115, winner traded 0.93-0.98) is the
+  already-counted $3/day 10-30bp bucket. READ: Kalshi's CFTC venue with pro
+  MMs ($3.7B volume in these series) prices the TWAP endgame perfectly; our
+  edge is Polymarket-specific book laziness and does not travel. VERDICT:
+  NO Kalshi bot, NO recorder — do not revisit without evidence the MM regime
+  changed. Data archived in user's B2 (kalshi-nico-0826); reduced tapes in
+  session scratchpad (reduced/, reduced_books2/, tw_cache.parquet).
