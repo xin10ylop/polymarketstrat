@@ -138,6 +138,12 @@ them in that order.
 
 ### Reading log (append each check)
 
+- 2026-08-02 BIG-ASK VERDICT (depth-event join, pre-registered n>=50 rule):
+  BTC-5m FINAL: n=60, 57/60 won, +13.7c/sh — big asks NOT adverse; raise cap
+  250->500 AFTER Tier 0 (control group stays identical to record until live
+  parity is measured). ETH-5m: n=18, 11/18, -20.9c — leaning ADVERSE, opposite
+  sign; no action until n>=50. Per-coin verdicts only; never pool coins.
+
 - 2026-08-02 FAMILY-TABLE RE-AUDIT (tape-derived): daily stops CONFIRMED
   (5m organic daily min -$195, 0/12 days breach -250; 650 floors clear one
   max loss). Cap headroom: 15m cap1000 would add ~+$100/mo (binds 1%), 1h
