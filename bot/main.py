@@ -175,6 +175,15 @@ async def amain():
     toll = TollStrategy(CFG, clob, oracle, spot, executor, ledger, risk)
     snipe = SnipeStrategy(CFG, clob, oracle, spot, executor, ledger, risk)
 
+    kfeed = None
+    if CFG.kalshi_telemetry:
+        if CFG.family == "15m" and CFG.coin in ("btc", "eth"):
+            from bot.feeds.kalshi import KalshiFeed
+            kfeed = KalshiFeed(CFG)
+            snipe.kalshi = kfeed     # telemetry-only: read in _depth_event
+        else:
+            log.warning("KALSHI_TELEMETRY ignored: btc/eth 15m families only")
+
     if CFG.slug_style == "et_hourly" and CFG.window_secs != 3600:
         raise SystemExit("CONFIG ERROR: SLUG_STYLE=et_hourly requires WINDOW_SECS=3600 "
                          "(endDate coincidences would bind wrong markets)")
@@ -197,6 +206,8 @@ async def amain():
         asyncio.create_task(_supervised("healer", settlement_healer, CFG, ledger), name="healer"),
         asyncio.create_task(_supervised("status", status, CFG, ledger, oracle, spot, clob, toll, snipe), name="status"),
     ]
+    if kfeed is not None:
+        tasks.append(asyncio.create_task(_supervised("kalshi", kfeed.run), name="kalshi"))
     if reconciler_task is not None:
         tasks.append(asyncio.create_task(reconciler_task, name="balance-reconciler"))
     if prewarm_task is not None:

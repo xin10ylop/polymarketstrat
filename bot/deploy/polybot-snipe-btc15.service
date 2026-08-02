@@ -17,6 +17,10 @@ Environment=SLUG_PREFIX=btc-updown-15m
 Environment=TOLL_ENABLED=0
 # 900s windows: give the vol estimator a full 2x window before trusting it
 Environment=BOOK_MAX_AGE_S=15
+# Kalshi telemetry overlay: log Kalshi's concurrent price on every take
+# attempt (depth events, "k" field). TELEMETRY ONLY — trading unchanged,
+# PnL series stays comparable. Runbook 2026-08-02 addendum.
+Environment=KALSHI_TELEMETRY=1
 Environment=SNIPE_WARMUP_S=1800
 Environment=SNIPE_MAX_CLIP=500
 Environment=SNIPE_WINDOW_MAX_COST=500

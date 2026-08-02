@@ -208,10 +208,12 @@ class SnipeStrategy:
         never takes; settlement joins outcomes in later, off-line."""
         try:
             post = sorted(st.asks.items())[:5] if st is not None else []
+            kf = getattr(self, "kalshi", None)   # telemetry-only overlay; None-safe
+            k = kf.state(wts + self.cfg.window_secs) if kf is not None else None
             self.ledger.event("depth", json.dumps(
                 {"w": wts, "s": side, "fv": round(fv, 4),
                  "pre": [[p, round(z, 1)] for p, z in pre],
                  "post": [[p, round(z, 1)] for p, z in post],
-                 "fill": round(filled, 1)}, separators=(",", ":")))
+                 "fill": round(filled, 1), "k": k}, separators=(",", ":")))
         except Exception:  # noqa: BLE001 - research logging must never break trading
             log.debug("depth event failed w%s", wts)

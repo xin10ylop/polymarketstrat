@@ -187,6 +187,11 @@ class Config:
     # 20:00 closes, 2026-08-02) — 600s missed EVERY hourly outcome. The 1h
     # unit sets 1800.
     outcome_patience_s: float = _env("OUTCOME_PATIENCE_S", 600.0, float)
+    # Kalshi price telemetry (btc/eth 15m only): log Kalshi's concurrent
+    # same-window price on every take attempt. TELEMETRY ONLY — no behavior
+    # change, no Kalshi trading. Runbook 2026-08-02 addendum has the evidence
+    # and the staged plan (veto only after measurement on our own fills).
+    kalshi_telemetry: bool = _env("KALSHI_TELEMETRY", "0") == "1"
     oracle_max_staleness_s: float = 5.0    # oracle feed silence -> degraded, no trading
     feed_max_silence_s: float = 10.0       # spot feed silence pauses the snipe
 
