@@ -138,6 +138,15 @@ them in that order.
 
 ### Reading log (append each check)
 
+- 2026-08-02 FAMILY-TABLE RE-AUDIT (tape-derived): daily stops CONFIRMED
+  (5m organic daily min -$195, 0/12 days breach -250; 650 floors clear one
+  max loss). Cap headroom: 15m cap1000 would add ~+$100/mo (binds 1%), 1h
+  +$21 — DEFERRED to post-gate (no mid-gate config churn). CORRECTIONS:
+  competition-tax by windows-lost metric = 21%/22%/11% (5m/15m/1h) — earlier
+  47%/12%/9% used the ask-vanish metric; both real, table now says which.
+  5m sz>250 shows +3.7c on TAPE vs -2.4c on LEDGER — ledger law wins, cap
+  250 stays; depth events will retest with true-feed data post-gate.
+
 - 2026-08-02 ETH-5m GATE: PASSED (ledger-derived, per the conditional-verification
   protocol): EV +9.86c/sh on 55 distinct windows all-settled (criterion >=+5c),
   halves +$314/+$568 both positive, 11/12 trading days green, 0 mismatches,
