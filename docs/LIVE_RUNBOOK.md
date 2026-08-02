@@ -138,6 +138,14 @@ them in that order.
 
 ### Reading log (append each check)
 
+- 2026-08-02 ETH-5m GATE: PASSED (ledger-derived, per the conditional-verification
+  protocol): EV +9.86c/sh on 55 distinct windows all-settled (criterion >=+5c),
+  halves +$314/+$568 both positive, 11/12 trading days green, 0 mismatches,
+  0 halts in window. Effective n=55 windows (fills=rows inflation confirmed:
+  top window 17 rows at the 250-sh clip). ETH-5m is LIVE-ELIGIBLE #2.
+  Sequencing: BTC-5m Tier 0 proves the live pipeline first; ETH follows onto
+  the live box after a clean BTC Tier 0 (one new variable at a time).
+
 - 2026-08-02 BOOK-FRESHNESS AUDIT (Telonex, self-audit of the 45s/15s widening):
   Archive truth at eval instants (T-6..T-1.5): book age >3s on only 8.5%
   (btc15 weekday), 7.8% (btc15 WEEKEND — no weekend effect), 9.1% (eth15),
