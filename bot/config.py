@@ -156,7 +156,13 @@ class Config:
     snipe_vol_floor: float = 1e-6
     basis_window_s: int = 60               # rolling median window for oracle/spot basis
     vol_window_s: int = 300                # realized vol estimator window
-    book_max_age_s: float = 3.0            # never trust a book older than this
+    # Max book age before _ask_ok refuses to trade on it. 3s suits 5m markets
+    # (books tick constantly near the close). On the 1h family the winning
+    # token often goes QUIET for tens of seconds — an unchanged book on a live
+    # ws IS current (deltas remove taken levels), so the 1h unit widens this
+    # (diagnosed 2026-08-02: stale_book was 57% of its rejections, blinding it
+    # to the ~1/day opportunities the tape measured).
+    book_max_age_s: float = _env("BOOK_MAX_AGE_S", 3.0, float)
 
     # --- risk / kill-switches ---
     max_daily_loss: float = _env("MAX_DAILY_LOSS", 250.0, float)  # $ paper, halt for the day
