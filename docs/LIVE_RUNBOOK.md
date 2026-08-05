@@ -609,3 +609,31 @@ them in that order.
   vs winners; (3) enable dissent-veto (and evaluate confirm-relaxation for
   more fills) only on that evidence. Kalshi is a signal source, not a venue:
   no account, no trading, no cost.
+
+- 2026-08-04 CROSS-VENUE STRATEGY HUNT (7 backtests, May02-Jul13 matched tick
+  data, adversarial verification where session limits allowed): SURVIVORS:
+  (1) S5 intra-PM shared-close structure (5m+15m windows ending together;
+  buy Up-longer + Down-shorter when combined ask cost <1 -> payoff floor $1,
+  verified 0 violations/9,729 pairs): conservative tier $20-27/day EVERY
+  month, slippage-robust; strict tier adds $14-40/day but 75% concentrated
+  in 8 dislocation days, cancel-latency unproven -> build as paper scanner,
+  log-only the deep tier. (2) Kalshi K<0.95 veto on 15m cheap takes:
+  +$21/day avoided losses, execution-proof, CONFIRMED by both verifiers ->
+  task #18 continues exactly as planned. (3) S1 deep-shelf (15m ask
+  0.90-0.99 + Kalshi>=0.98): +$36/day, execution-robust but in-sample-picked
+  -> out-of-sample on Jul14+ paper first. GRAVEYARD: S1-as-specified +$4/day
+  after execution (statistically zero); my earlier "196/196 +5.3c" was a
+  LABEL ARTIFACT (Kalshi results used as PM labels; true labels -> +0.19c)
+  — retracted; S2 strike-bridge dead ("Kalshi-certain" != "Poly-certain":
+  TWAP basis + stale strike cap transfer at ~0.97-0.98); S3 quarter-drift
+  null (10x below bar); S4 dutch decaying/negative-in-July + 36% knife
+  split risk; S6 open-jump scalp -5.7c/sh all months (unfilled tail wins
+  0.6%, needs 81.5% side accuracy, best signal 60.5%; Kalshi does NOT lead
+  spot; chainlink-staleness mechanism nonexistent at 1s tick). LAWS LEARNED:
+  pin decoupling is the universal loss engine (74/81 S1 losers; 35.8% of
+  knife windows settle differently across venues — same family as the SOL
+  mismatch); displayed size is adversely informed everywhere; edges live in
+  dislocation bursts (fat tails, not steady income); 0.07*p(1-p) fee kills
+  mid-price strategies; July showed venue-wide competitive erosion — paper
+  bots stay the referee. Full analyses: session scratchpad research_out/
+  (FINAL.md + 7 per-strategy mds + verifier reports + trade-level parquets).
