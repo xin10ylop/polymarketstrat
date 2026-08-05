@@ -49,7 +49,17 @@ async def reconciler(cfg, clob, ledger, toll, oracle):
                 k_open = oracle.price_at(wts, exact=True, tolerance=2)
                 k_close = oracle.price_at(wts + cfg.window_secs, exact=True)
                 if k_open is not None and k_close is not None:
-                    oracle_winner = "up" if k_close >= k_open else "down"
+                    # photo-finish windows: our sample second vs the official
+                    # resolution print legitimately land on opposite sides of
+                    # a <2bp move (two benign SOL halts, 08-02 and 08-04).
+                    # The tripwire exists to catch SYSTEMATIC misreads — a
+                    # real bug also disagrees on decided windows, which still
+                    # halt. Near-ties are logged, never flagged.
+                    if abs(k_close - k_open) / k_open < cfg.oracle_tie_bps * 1e-4:
+                        ledger.event("near_tie", f"w{wts} open={k_open} close={k_close}")
+                        oracle_winner = None
+                    else:
+                        oracle_winner = "up" if k_close >= k_open else "down"
             if not cfg.oracle_authoritative:
                 # 1h family resolves on the Binance candle, not our oracle
                 # feed: a disagreement is vendor dispersion, not our bug —

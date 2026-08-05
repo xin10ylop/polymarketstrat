@@ -180,6 +180,11 @@ class Config:
     # A restart = the human chose to resume; judge the NEW trading.
     snipe_trailing_rearm_fills: int = _env("SNIPE_TRAILING_REARM", 10, int)
     max_unmarked_fills: int = 5            # halt if this many old fills lack settlement
+    # Windows finishing within this margin are photo-finishes: the oracle
+    # cross-check is skipped (logged as near_tie) instead of arming the
+    # mismatch halt — sampling dispersion, not a bug signal. Disagreements
+    # on windows decided by more than this still halt everything.
+    oracle_tie_bps: float = _env("ORACLE_TIE_BPS", 2.0, float)
     # How long past window close the reconciler keeps polling gamma for the
     # official outcome before giving up (no_outcome). 5m/15m publish well
     # inside 10 min, but the 1h family resolves via UMA proposal ~11-13 min
