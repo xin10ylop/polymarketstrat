@@ -192,6 +192,20 @@ class Config:
     # change, no Kalshi trading. Runbook 2026-08-02 addendum has the evidence
     # and the staged plan (veto only after measurement on our own fills).
     kalshi_telemetry: bool = _env("KALSHI_TELEMETRY", "0") == "1"
+
+    # --- xwin: shared-close 5m x 15m structural scanner (paper-only, btc) ---
+    # Audited backtest (runbook 2026-08-04): conservative tier $8-20/day after
+    # latency+competition; deep tier log-only until leg-fail telemetry.
+    xwin_tau_min: float = _env("XWIN_TAU_MIN", 30.0, float)
+    xwin_tau_max: float = _env("XWIN_TAU_MAX", 180.0, float)
+    xwin_min_cost: float = _env("XWIN_MIN_COST", 0.90, float)
+    xwin_max_cost: float = _env("XWIN_MAX_COST", 0.99, float)
+    xwin_clip: float = _env("XWIN_CLIP", 250.0, float)
+    xwin_min_size: float = _env("XWIN_MIN_SIZE", 20.0, float)
+    xwin_book_max_age_s: float = _env("XWIN_BOOK_MAX_AGE_S", 10.0, float)
+    xwin_survival_s: float = 0.5        # paper-only entry survival gate
+    xwin_leg_retry_s: float = _env("XWIN_LEG_RETRY_S", 2.0, float)
+    xwin_max_chase: float = _env("XWIN_MAX_CHASE", 0.02, float)
     oracle_max_staleness_s: float = 5.0    # oracle feed silence -> degraded, no trading
     feed_max_silence_s: float = 10.0       # spot feed silence pauses the snipe
 

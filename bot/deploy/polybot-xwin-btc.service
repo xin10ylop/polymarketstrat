@@ -1,0 +1,28 @@
+[Unit]
+Description=Polymarket paper bot - XWIN shared-close 5m x 15m scanner (btc)
+After=network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=600
+StartLimitBurst=20
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/polymarketstrat
+Environment=BOT_MODE=paper
+Environment=COIN=btc
+# structural scanner: watches BOTH 5m and 15m books internally; the
+# family/window env vars of the other units do not apply here
+Environment=TOLL_ENABLED=0
+# audited defaults (runbook 2026-08-04): conservative tier auto-trades,
+# deep tier logs only. One package per shared close, never 2 concurrent.
+Environment=XWIN_CLIP=250
+Environment=MAX_DAILY_LOSS=300
+Environment=BOT_DATA_DIR=/opt/polymarketstrat/bot/data/xwin-btc
+Environment=LOG_LEVEL=INFO
+ExecStart=/opt/polymarketstrat/venv/bin/python -m bot.xwin_main
+Restart=always
+RestartSec=5
+MemoryMax=220M
+
+[Install]
+WantedBy=multi-user.target

@@ -95,6 +95,18 @@ class Ledger:
         self.db.commit()
         return mismatch
 
+    def mark_token_settle(self, wts, token, settle):
+        """xwin packages span TWO markets (four tokens), so the single-winner
+        record_settlement model doesn't fit — mark one token's fills directly."""
+        for rowid, px, sz, fee in self.db.execute(
+                "SELECT rowid, price, size, fee FROM fills "
+                "WHERE wts=? AND token=? AND settle IS NULL",
+                (wts, token)).fetchall():
+            pnl = (settle - px) * sz - fee
+            self.db.execute("UPDATE fills SET settle=?, pnl=? WHERE rowid=?",
+                            (settle, pnl, rowid))
+        self.db.commit()
+
     def max_order_id(self):
         return self.db.execute(
             "SELECT COALESCE(MAX(id), 0) FROM orders").fetchone()[0]
