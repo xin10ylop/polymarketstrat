@@ -126,12 +126,24 @@ class Ledger:
         # per-TAKE aggregation (audit F4: one sweep writes a row per price
         # level — on thin books 5-7 rows per take — so row-counting turned
         # "trailing 30 trades" into "trailing ~5 windows"); 7d wall-clock
-        # bound so ancient fills can't dominate a slow unit's breaker
+        # bound so ancient fills can't dominate a slow unit's breaker.
+        # Bounded by the last trailing HALT: the documented contract is
+        # "a restart = the human chose to resume; judge the NEW trading" —
+        # before this bound, pre-halt losers stayed in the window and
+        # re-halted every ~10 good fills (2026-08-05: 9/10 winners, halted
+        # by the 08-02 cluster anyway). Now a resumed bot is judged on a
+        # full fresh window; absolute damage stays capped by the daily stop.
+        since = time.time() - 7 * 86400
+        row = self.db.execute(
+            "SELECT MAX(ts) FROM events WHERE kind='HALT' "
+            "AND detail LIKE 'snipe: trailing%'").fetchone()
+        if row and row[0] is not None:
+            since = max(since, row[0])
         rows = self.db.execute(
             "SELECT SUM(pnl) FROM fills WHERE strategy LIKE 'snipe%' "
             "AND pnl IS NOT NULL AND ts > ? GROUP BY order_id "
             "ORDER BY MAX(ts) DESC LIMIT ?",
-            (time.time() - 7 * 86400, n)).fetchall()
+            (since, n)).fetchall()
         return sum(p for (p,) in rows), len(rows)
 
     def unmarked_old_fills(self, older_than_s=900, newer_than_s=172800):
