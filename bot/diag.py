@@ -35,8 +35,39 @@ def last_status(unit):
         return f"(journalctl failed: {e})"
 
 
+def feed_churn(unit):
+    """Websocket drop/reconnect counts, last 12h — the connection-crowding
+    measurement (per-IP throttling suspect, audit 2026-08-06)."""
+    try:
+        out = subprocess.run(
+            ["journalctl", "-u", unit, "--since", "12 hours ago", "--no-pager"],
+            capture_output=True, text=True, timeout=25).stdout
+        drops = out.count("ws dropped")
+        reconn = sum(1 for ln in out.splitlines() if "reconnect" in ln.lower())
+        return f"ws drops 12h: {drops} | reconnect lines: {reconn}"
+    except Exception as e:  # noqa: BLE001
+        return f"(churn check failed: {e})"
+
+
+def applied_env(unit):
+    """The env the RUNNING unit actually has (catches un-deployed changes)."""
+    try:
+        out = subprocess.run(
+            ["systemctl", "show", unit, "--property=Environment"],
+            capture_output=True, text=True, timeout=10).stdout
+        keys = ("SPOT_MAX_BAR_AGE_S", "BOOK_MAX_AGE_S", "KALSHI_TELEMETRY",
+                "SNIPE_MAX_CLIP", "MAX_DAILY_LOSS")
+        got = [kv for kv in out.replace("Environment=", "").split()
+               if kv.split("=")[0] in keys]
+        return " ".join(got) if got else "(defaults)"
+    except Exception as e:  # noqa: BLE001
+        return f"(env check failed: {e})"
+
+
 def bot_report(unit, data_dir):
     print(f"\n=== {unit} ===")
+    print(f"  {feed_churn(unit)}")
+    print(f"  applied env: {applied_env(unit)}")
     db_path = os.path.join(data_dir, "paper.db")
     if not os.path.exists(db_path):
         print("  (no ledger)")
