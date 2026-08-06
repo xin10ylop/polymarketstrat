@@ -7,14 +7,15 @@ StartLimitBurst=20
 
 [Service]
 Type=simple
+# window boundaries wake every bot at once on a shared vCPU;
+# money bots must win that contention (ws-staleness audit 2026-08-06)
+CPUWeight=300
 WorkingDirectory=/opt/polymarketstrat
 Environment=BOT_MODE=paper
 Environment=SPOT_FEED=coinbase
 Environment=COIN=sol
 Environment=TOLL_ENABLED=0
 # sparse tape + no settled-fill record of its own: tighter bar-age cap than
-# the fleet default until SOL earns one (Fable bar-age audit, 07-31)
-Environment=SPOT_MAX_BAR_AGE_S=3.0
 Environment=MAX_DAILY_LOSS=250
 Environment=BOT_DATA_DIR=/opt/polymarketstrat/bot/data/snipe-sol
 Environment=LOG_LEVEL=INFO

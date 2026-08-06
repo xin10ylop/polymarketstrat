@@ -7,6 +7,9 @@ StartLimitBurst=20
 
 [Service]
 Type=simple
+# window boundaries wake every bot at once on a shared vCPU;
+# money bots must win that contention (ws-staleness audit 2026-08-06)
+CPUWeight=400
 WorkingDirectory=/opt/polymarketstrat
 Environment=BOT_MODE=paper
 Environment=SPOT_FEED=coinbase
