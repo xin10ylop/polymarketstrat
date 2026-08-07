@@ -655,10 +655,24 @@ them in that order.
   scored on crash-day savings vs champion-day cost + Jul28+ walk-forward):
   daily stop $150-200 is HARMFUL (-$583 BTC: 08-01 dipped below -$200
   intraday then finished +$443 — intraday drawdown is the strategy working);
-  cooldowns are noise (sign flips 30m vs 60m pause); per-window COST CAP
-  $200 is the one near-free rule: BTC delta -$38 ex-anomaly (1.6% of pnl)
-  while capping any single-window loss at ~$200, and it is the ONLY rule
-  class that also trims resolution-anomaly tail risk. 08-07 ANOMALY ON
+  cooldowns are noise (sign flips 30m vs 60m pause). ADVERSARIAL VERIFY
+  (clean-room reimpl matched every number; Fisher tests on momentum all
+  p>=0.54): 3 of 4 conclusions confirmed; my flat-cost-cap claim REFUTED —
+  $150 flat cap costs 9.7-14.5% of ex-anomaly pnl (not <2%), $200 flat cap
+  is cheap (-2.1%) but bought almost nothing (saves $23 of the -$421
+  anomaly, binds ZERO ETH losers). What verified instead: (a) BTC's
+  px>=0.95 bucket is structurally thin — 104 windows net -$61.50
+  ex-anomaly (breakeven hit rate ~97%, observed 95.2%); a CONDITIONAL cap
+  (cost<=$150 only when avgpx>=0.95, BTC only) is net +$30.91 in-sample
+  while cutting both worst ex-anomaly windows (-$240.67, -$234.95) to
+  ~-$150 — two-event evidence, adopt at live, keep paper unchanged;
+  (b) ETH must NOT be capped: its engine is multi-fill cheap windows (67%
+  of pnl; flat caps bind 19 ETH winners, 0 losers) and its px>=0.95 bucket
+  has zero losses; (c) the UNPRICED exposure is cross-book same-window
+  concurrency — the two largest combined hits (08-07 -$421, 07-19 01:25
+  -$203) were simultaneous near-max positions on BTC+ETH in ONE window; no
+  tested rule bounds it; a combined per-window ceiling (~$300 across books)
+  is the missing lever and needs a cross-bot mechanism at live. 08-07 ANOMALY ON
   RECORD: w1786066800 (01:40) resolved DOWN on btc+eth+sol while Binance
   1s shows UP (+4.6/+6.0/+4.1bps) — bots bet the true side, settled wrong,
   -$421 combined; 8 disputed windows through 13:40; mismatch halts froze the
