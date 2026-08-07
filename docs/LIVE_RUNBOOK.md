@@ -637,3 +637,38 @@ them in that order.
   mid-price strategies; July showed venue-wide competitive erosion — paper
   bots stay the referee. Full analyses: session scratchpad research_out/
   (FINAL.md + 7 per-strategy mds + verifier reports + trade-level parquets).
+
+- 2026-08-07 BIG-LOSS ANATOMY (user q: same hour / same window / cumulative?
+  Per-window ledgers: BTC 284 windows +$2311, ETH 58 windows +$664, Jul15-Aug7).
+  VERDICT — SINGLE-WINDOW EVENTS, not decay: top-10 losing windows carry 55%
+  (BTC) / 98% (ETH) of all loss dollars; every catastrophe is a max-size
+  (250sh) window flipping. NO loss momentum: P(loss | prev window lost) 16.0%
+  vs 18.1% after a win (base 17.6%); the 11 windows traded within 60min after
+  a big loss made +$72.75. "Streaks" exist (08-02 07:20-07:55 -$225/35min)
+  but are chance clustering, not contagion. Hour-of-day: damage sits in the
+  01/06/07/12 UTC quiet-chop zone, but the hour-block backtest gain is a
+  MIRAGE — ETH's entire walk-forward gain was the 08-07 resolution-anomaly
+  window sitting in hour 01 (ex-anomaly: exactly $0.00); BTC ex-anomaly WF
+  +$118 over 10 windows (one lucky skip); blocking hours 0-7 broadly LOSES
+  $750 (BTC) / $436 (ETH) — nights also feed the champions. RULE TOURNAMENT
+  (cost caps, cooldowns, daily stops, hour blocks, px-band caps, combos —
+  scored on crash-day savings vs champion-day cost + Jul28+ walk-forward):
+  daily stop $150-200 is HARMFUL (-$583 BTC: 08-01 dipped below -$200
+  intraday then finished +$443 — intraday drawdown is the strategy working);
+  cooldowns are noise (sign flips 30m vs 60m pause); per-window COST CAP
+  $200 is the one near-free rule: BTC delta -$38 ex-anomaly (1.6% of pnl)
+  while capping any single-window loss at ~$200, and it is the ONLY rule
+  class that also trims resolution-anomaly tail risk. 08-07 ANOMALY ON
+  RECORD: w1786066800 (01:40) resolved DOWN on btc+eth+sol while Binance
+  1s shows UP (+4.6/+6.0/+4.1bps) — bots bet the true side, settled wrong,
+  -$421 combined; 8 disputed windows through 13:40; mismatch halts froze the
+  fleet correctly (fleet stays halted until disputed rate is zero for hours).
+  L2 signature: catastrophic flips entered at 0.83-0.97 with 2.3k-42k-share
+  0.98/0.99 ask walls BEHIND the entry (informed sellers) — but depth was
+  only pulled for loss windows (selection bias), so the wall-behind veto is
+  NOT yet scored. bot/loss_audit.py closes that: joins ALL depth events
+  (winners too) to window outcomes, prints wall-bucket win rates + veto
+  counterfactual grid. DECISIONS (per "no changes for changes' sake"): paper
+  bots UNCHANGED (comparability; no rule beat baseline robustly ex-anomaly);
+  cost-cap $200/window adopted as a LIVE-deployment requirement, not a paper
+  change; wall-veto decision deferred to loss_audit evidence.
