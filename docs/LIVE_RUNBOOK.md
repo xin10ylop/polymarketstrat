@@ -686,3 +686,24 @@ them in that order.
   bots UNCHANGED (comparability; no rule beat baseline robustly ex-anomaly);
   cost-cap $200/window adopted as a LIVE-deployment requirement, not a paper
   change; wall-veto decision deferred to loss_audit evidence.
+
+- 2026-08-07 loss-anatomy ADDENDUM (completeness critic): (1) REGIME DRIFT
+  is the top caveat — all rule economics are July-dominated (edge $8-22/
+  window, ~28 windows/day) while August ex-anomaly runs ~$1.19/window at
+  8.5/day; the $200-cap delta flips SIGN by regime (Jul -$108, Aug +$37
+  ex-anomaly), so re-score the tournament on August data as it accrues.
+  (2) The $200-flat-cap verdict is statistically UNDECIDABLE on this sample
+  (bootstrap CI [-$163,+$43], P(benefit)=0.10) — only the $150 flat cap is
+  settled (harmful). (3) Proportional pnl-scaling is provably wrong for
+  mixed-side multi-fill windows (2/9 depth-logged BTC loss windows filled
+  BOTH sides) — a real cap truncates the fill sequence; needs per-fill
+  replay before any cap ships. (4) Depth evidence is doubly censored:
+  only 9/50 BTC + 5/12 ETH loss windows have depth, all post-Jul-31 —
+  loss_audit must run before any wall-veto decision. (5) Treat oracle
+  disputes as a RECURRING cost, not an excludable anomaly: the two worst
+  fleet events were correlated cross-book single windows; the fleet-level
+  combined per-window ceiling (~$200-250) is the most promising UNTESTED
+  rule and addresses both tails. (6) Paper-fill adverse selection at
+  px>=0.90 (fills in front of 2k-42k walls) can shrink live winners while
+  losses persist — price this before live sizing. Trading-gap censoring
+  (BTC 64h, ETH 112h) is explained: breaker/mismatch halts, not missing data.
