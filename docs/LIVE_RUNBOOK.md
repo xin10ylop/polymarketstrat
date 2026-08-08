@@ -772,3 +772,25 @@ them in that order.
   resolution anomaly for a full day. Add a weekly check that the live market
   description/resolutionSource still matches what the oracle implements —
   gamma-api /markets?slug=...&closed=true returns both fields.
+
+- 2026-08-08 TWAP FEED PROBE RESULT + migration gate. ws-live-data.polymarket.com
+  does NOT publish the TWAP streams: an unfiltered subscribe enumerated every
+  symbol on every live topic and found only crypto_prices_chainlink (1s
+  Chainlink grid: btc/usd, eth/usd, sol/usd, bnb, doge, xrp, hype, zec) and
+  crypto_prices (exchange spot: btcusdt, ...). No crypto_prices_*twap* topic
+  answers at all. CONSEQUENCE: the resolver's 30s/60s TWAP must be
+  RECONSTRUCTED from the 1s Chainlink grid the oracle already consumes —
+  almost certainly how Polymarket computes it too, since that is the same
+  series. THE GATE (do not skip): bot/twap_record.py captures the 1s grid to
+  bot/data/twapcal/<coin>_1s.db; bot/twap_verify.py rebuilds each candidate
+  rule (TWAP/TWAP, TWAP/spot, OLD spot/spot; boundary conventions [t-N,t) and
+  (t-N,t]) and scores them against OFFICIAL gamma outcomes for every fully
+  covered window. Because the recording is the resolver's own price series, a
+  correct reconstruction must score ~100% — require >=99% before touching
+  bot/feeds/oracle.py, and keep all 5m/15m direction bots stopped until it
+  passes. Mechanics validated 08-08 by replaying the Aug-7 Binance 1s series
+  through the verifier: it correctly ranked TWAP/TWAP first (94.4%) and the
+  old spot rule last (89.9%), with all 16 disagreements under 1.5bp — that
+  residue IS the Binance-vs-Chainlink basis and is exactly what should vanish
+  on the real grid. If it does not vanish, the boundary convention or the
+  weighting is wrong and must be re-derived BEFORE any oracle change.
