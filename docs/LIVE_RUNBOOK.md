@@ -672,11 +672,17 @@ them in that order.
   concurrency — the two largest combined hits (08-07 -$421, 07-19 01:25
   -$203) were simultaneous near-max positions on BTC+ETH in ONE window; no
   tested rule bounds it; a combined per-window ceiling (~$300 across books)
-  is the missing lever and needs a cross-bot mechanism at live. 08-07 ANOMALY ON
-  RECORD: w1786066800 (01:40) resolved DOWN on btc+eth+sol while Binance
-  1s shows UP (+4.6/+6.0/+4.1bps) — bots bet the true side, settled wrong,
-  -$421 combined; 8 disputed windows through 13:40; mismatch halts froze the
-  fleet correctly (fleet stays halted until disputed rate is zero for hours).
+  is the missing lever and needs a cross-bot mechanism at live. 08-07
+  "ANOMALY" — RETRACTED, see the 2026-08-08 RESOLUTION-RULE CHANGE entry:
+  I recorded w1786066800 (01:40, -$421 across btc+eth+sol) as a venue
+  resolution error because Binance 1s spot showed UP while it settled DOWN.
+  It was not an error — Polymarket changed the resolution rule effective
+  08-07 00:00 UTC (spot close -> 30s rolling TWAP), and under the new rule
+  that window WAS Down (-1.28bp). The bots were wrong, not the venue; every
+  "disputed window" in that list has the same cause. The mismatch halts
+  still earned their keep: they caught a silent venue regime change within
+  two hours. Treat the Aug-7 windows as a BROKEN-SIGNAL era, not a tail
+  event — and do not use them to price resolution risk.
   L2 signature: catastrophic flips entered at 0.83-0.97 with 2.3k-42k-share
   0.98/0.99 ask walls BEHIND the entry (informed sellers) — but depth was
   only pulled for loss windows (selection bias), so the wall-behind veto is
@@ -707,3 +713,62 @@ them in that order.
   px>=0.90 (fills in front of 2k-42k walls) can shrink live winners while
   losses persist — price this before live sizing. Trading-gap censoring
   (BTC 64h, ETH 112h) is explained: breaker/mismatch halts, not missing data.
+
+- 2026-08-08 RESOLUTION-RULE CHANGE (root cause of every "Aug 7 dispute";
+  THE most important entry in this file — it invalidates the target variable
+  every direction strategy was built on). WHAT CHANGED: Polymarket switched
+  the Chainlink-resolved crypto up-down series from the SPOT data stream to
+  ROLLING TWAP streams. Old rule (market description, verbatim): "resolve Up
+  if the Bitcoin price at the END of the range is >= the price at the
+  BEGINNING", source data.chain.link/streams/btc-usd. New rule: "resolve Up
+  if the time-weighted average price (TWAP) ... is >= the price at the
+  beginning of that range", source .../btc-usd-twap-30s-streams. TWAP length
+  scales with window: 30s for the 5m families, 60s for the 15m families
+  (eth/sol identical wording). WHEN: market metadata shows the last
+  spot-sourced market was created 08-06 00:02 UTC and the first TWAP-sourced
+  one 08-06 01:48 UTC; because these markets are minted ~24h ahead, the
+  change took effect for all windows from 08-07 00:00 UTC. Our first
+  mismatch: 08-07 01:40. NOT AFFECTED: the 1h series
+  (bitcoin-up-or-down-*) still resolves on Binance BTC_USDT via UMA —
+  verified unchanged 08-07/08-08. WHICH QUANTITY RESOLVES (measured, not
+  assumed — five candidate rules scored against official outcomes on 287
+  Aug-7 BTC windows using exact Binance 1s data): 30s-TWAP@close vs
+  30s-TWAP@open 94.4%; 30s-TWAP@close vs spot open 90.6%; old spot rule
+  90.2%; full-5min mean vs open 80.8% (dead — "TWAP of the range" does NOT
+  mean averaging the whole window). Difference-in-differences confirms the
+  cutover on two assets: BTC old rule 95.8%/97.9% on 08-05/08-06 vs 90.2% on
+  08-07, while the TWAP rule goes 87.4%/89.2% -> 94.4%; head-to-head on
+  windows where the two rules disagree, spot won 27-3 and 26-1 before the
+  change and LOST 5-17 after. ETH replicates independently (spot 95.8% ->
+  87.5%, TWAP 90.6% -> 96.5%, head-to-head 21-6 -> 2-28). Residual ~5% is
+  Binance-vs-Chainlink basis on sub-2bp windows, not rule ambiguity.
+  CONSEQUENCES: (1) bot/feeds/oracle.py reads the SPOT stream, so both the
+  strike and the settle comparison are now the wrong quantity — the snipe
+  fv (P(spot close >= spot open)) targets a variable that no longer decides
+  anything. All 5m/15m direction bots must stay STOPPED until the oracle
+  consumes the TWAP stream. (2) XWIN's payoff floor is VOID: its leg choice
+  compares spot strikes, and spot-vs-TWAP strike ordering flips sign on 6.3%
+  of shared closes (6/95 on Aug 7) — a flipped package has a $0 hole where
+  the $2 band used to be, and 2 of those 6 lost BOTH legs (~-$237 each). Its
+  +$57 on 08-08 is variance from the new payoff shape, not evidence of
+  health. Even with correct strikes, the 5m market settles on a 30s TWAP
+  while the 15m settles on a 60s TWAP, so the two legs no longer share one
+  close price: require strike gap > the expected 30s/60s spread (|spread| >=
+  |gap| on 3.2% of Aug-7 closes, 0 actual violations) before entering.
+  (3) Every historical backtest in REPORT.md and the strategy-hunt files
+  measured the OLD target — treat their edges as unvalidated until re-run
+  against TWAP labels. THE SILVER LINING (untested, promising): a 30s TWAP
+  at close is ~83% locked 5 seconds before the close, so the new target is
+  MORE predictable at snipe time than a spot print was. The edge may be
+  better once implemented correctly — but competitors get the same gift, so
+  measure before believing. NEXT STEPS: (a) bot/twap_probe.py discovers the
+  topic/symbol carrying TWAP values on wss://ws-live-data.polymarket.com
+  (must run on the droplet — the research box cannot open websockets);
+  (b) rewrite the oracle to serve TWAP-at-instant with the window-length-
+  appropriate averaging, keep the spot stream only as telemetry; (c) re-derive
+  the snipe fv against the TWAP target and re-run the honesty gate;
+  (d) re-verify XWIN's floor with TWAP strikes + a minimum-gap rule.
+  MONITORING LESSON: a silent venue rule change looked exactly like a
+  resolution anomaly for a full day. Add a weekly check that the live market
+  description/resolutionSource still matches what the oracle implements —
+  gamma-api /markets?slug=...&closed=true returns both fields.
