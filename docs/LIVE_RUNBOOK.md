@@ -1130,3 +1130,63 @@ them in that order.
   TWAP reconstruction and oracle.py (clean), the fee model, the out-of-sample
   collapse of the strict-threshold cells, and the estimator fix. The 1s
   lookahead in the analysis scripts is real but immaterial (<=0.6pp).
+
+- 2026-08-10 WHERE THE MONEY ACTUALLY CAME FROM (third audit — the finding
+  that reframes the entire post-rule-change effort). P&L decomposed by entry
+  price over 283 old-rule BTC windows, +$2,536:
+      px < 0.50   n=46   6,435 sh   +$1,154.57   46% of profit  +17.9c/sh
+      0.50-0.80   n=52   8,204 sh     +$856.16   34%            +10.4c/sh
+      0.80-0.90   n=38   5,323 sh      +$89.38    4%             +1.7c/sh
+      0.90-0.95   n=43   7,237 sh     +$497.80   20%             +6.9c/sh
+      px >= 0.95  n=104 15,814 sh      -$61.50   -2%             -0.4c/sh
+  Entries at or above 0.95 are 37% OF ALL SHARES EVER TRADED and produced
+  MINUS $61.50. z = -0.06 against a fair market: not thin, zero. Pooled with
+  ETH: -$0.50 on 17,460 shares. Price-floor counterfactual ($/day): no floor
+  $121, floor 0.80 $25, floor 0.90 $21, floor 0.95 -$3.
+  THE IMPLICATION: every analysis I ran after the rule change — the taker
+  study at 0.96-0.99, the whole maker study at 0.92-0.94 — targeted the one
+  price region that provably never had an edge, in the regime where the
+  strategy DID work. The runbook already contained this ("px>=0.95 is
+  structurally thin, breakeven ~97%, observed 95.2%", 08-07 loss audit) and
+  every subsequent step walked past it.
+  WHAT THE EDGE ACTUALLY WAS — not speed, not forecasting. The bot selected
+  knife-edge windows (median |final margin| 1.27bp vs 4.06bp baseline; in the
+  cheap bucket the price had crossed the strike a median 7s before the close,
+  41% within the final 6s). At those margins WHICH FEED DECIDES is close to a
+  coin flip: Chainlink-vs-Binance-tape agreement is 55.6% at 0-0.5bp, 87.5%
+  at 0.5-1bp, and the median |closing tick - closing 30s TWAP| is 0.46bp,
+  comparable to the decision margin itself. The order book priced the
+  exchange tape's answer; Polymarket settled on Chainlink. We were buying the
+  RESOLVER's answer at the TAPE's price. Direct proof: rescore the identical
+  trades against the Binance close instead of the Chainlink outcome and
+  +$2,536 becomes -$2,082. And we were not even the fast side — in the cheap
+  bucket spot sat on our side 87-91% at T-30/-20/-10 and only 40% at T-3, so
+  the late move went AGAINST us and we were reading a pre-move print.
+  WHY THE TWAP ENDS IT, DELIBERATELY. Freeze test, share of the outcome still
+  undetermined at L seconds: L=6 old 2.28% vs new 0.26% (8.9x, and 13.1x on
+  knife-edge windows); L=120 old 22.8% vs new 21.1% (1.08x). The change is a
+  precision strike on terminal sniping that leaves the 2-minute forecasting
+  problem untouched. It also averages away the tick idiosyncrasy (~sqrt(30))
+  that made the resolver's identity worth more than the direction call. Both
+  legs of the edge, removed on purpose.
+  "THE EDGE MOVED EARLIER" IS A CONSERVATION-OF-EDGE FALLACY. Nothing moved.
+  At L=120 the new rule is 1.08x as hard as the old one — that forecasting
+  problem existed unchanged before the change, was reachable with the same
+  code, and the bot never made money there: its own ledger says 0.90+ earned
+  $21/day and 0.95+ earned -$3/day. RETRACTED.
+  ALSO FLAGGED: top 20 of 283 windows > 100% of profit; day-block bootstrap
+  5th percentile is $35/day against the $60-100/day figure quoted to justify
+  the maker route. ETH is not an independent check (rho=0.809 with BTC on 5m
+  returns, same 48 hours, error correlation +0.223) — pooling n=295 as
+  independent overstates precision and cannot address the calm-regime risk.
+  OPEN AND UNRESOLVED — paper/live fill parity on the load-bearing bucket.
+  snipe_take_recheck_s runs in PAPER ONLY: paper sleeps 0.5s, re-reads the
+  book and sweeps it, and _ask_ok has no "price has not collapsed" condition,
+  so a book falling 0.97 -> 0.29 passes and paper buys the wreckage (5 of 24
+  sampled fills saw the ask drop >=10c across that sleep; one dropped 68c on
+  250 shares). MY READ, recorded as a partial dissent: live sends a
+  marketable limit that ARRIVES ~0.25-0.5s later and would sweep the same
+  collapsed book at the same prices, so this may be far less severe than an
+  outright paper-only artifact. But it is unexamined, it lands on the 81% of
+  profit that came from cheap entries, and it must be settled before any
+  claim about the record's validity. That audit is upstream of everything.
