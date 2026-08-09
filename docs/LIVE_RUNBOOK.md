@@ -1017,3 +1017,28 @@ them in that order.
   (4) both test days were calm in absolute terms (0.32-1.05%/day) — nothing
   here speaks to a 3%/day regime; (5) 1 of 20 swept cells surviving OOS is
   still multiple testing, mitigated but not erased by the ETH replication.
+
+- 2026-08-09 TAKER VERDICT IS FINAL: PRICED. Real Chainlink grid, 332 BTC +
+  97 ETH windows, |gap|>2bp, accuracy vs the break-even the book charges:
+    BTC  L=120 94.6% vs 96.4% (-1.8pp) | L=90 95.3% vs 98.1% (-2.8pp)
+         L=60  98.5% vs 98.5% (0.0pp)  | L=45 98.5% vs 99.2% (-0.7pp)
+    ETH  L=120 94.3% vs 95.3% (-1.0pp) | L=90 96.9% vs 97.3% (-0.4pp)
+         L=60  94.4% vs 98.6% (-4.2pp) | L=45 100%  vs 98.7% (+1.3pp, n=33)
+  Negative or exactly break-even everywhere with real size behind it, on two
+  independent coins, agreeing with the Binance-proxy runs to within half a
+  point. RETRACTION: I hypothesised that my proxy's basis noise was hiding
+  real accuracy — it was not. The proxy said 94.1% at L=120 BTC and the true
+  feed says 94.6%. The 36/36 clean run in edge_report that prompted that
+  hypothesis had an 11-23% chance of occurring at the measured accuracy;
+  it was luck, and I let it pull me toward a conclusion the larger sample
+  did not support. Third time this week a small sample has done that, so:
+  no conclusion from fewer than ~100 signals, without exception.
+  WHAT REMAINS, AND IT IS THE LAST ONE: not paying the spread. Maker fee is
+  ZERO. At L=60 BTC our 98.5% against a 0.984 ask is dead even; the same
+  98.5% against a bid resting at 0.96 is +2.5c/share. The forecast does not
+  need to improve at all — the entry price does. bot/maker_report.py
+  estimates fill probability from the snapshots already recorded: a bid at P
+  counts filled if any later snapshot shows an ask <= P. Biases stated in
+  the file (optimistic on queue position, pessimistic on unseen dips).
+  If the fill rate is a few percent this is dead; if it is 20%+ at 0.96,
+  the original strategy survives as a maker and the next step is papering it.
