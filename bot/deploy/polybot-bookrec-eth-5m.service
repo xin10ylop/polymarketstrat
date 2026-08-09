@@ -1,0 +1,23 @@
+[Unit]
+Description=Polymarket book recorder - eth 5m - top of book at fixed leads before close
+After=network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=600
+StartLimitBurst=20
+
+[Service]
+Type=simple
+# measurement only: never trades, never touches a bot ledger. Lowest CPU
+# share on the box so it can never starve a money bot at a window boundary.
+CPUWeight=50
+WorkingDirectory=/opt/polymarketstrat
+Environment=COIN=eth
+Environment=FAMILY=5m
+Environment=BOOK_DIR=/opt/polymarketstrat/bot/data/bookcal
+ExecStart=/opt/polymarketstrat/venv/bin/python -m bot.book_record
+Restart=always
+RestartSec=10
+MemoryMax=120M
+
+[Install]
+WantedBy=multi-user.target
