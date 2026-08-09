@@ -1401,3 +1401,57 @@ them in that order.
   claimed. It goes ahead of task #18 (the stale Kalshi overlay) only after
   the parity audit reports, because the parity number decides whether this
   project's historical record can be trusted as a template at all.
+
+- 2026-08-10 THE BINANCE PROXY WAS WRONG AND THE REAL FEED IS BETTER.
+  RETRACTING the 08-10 entry above titled "already priced". The droplet ran
+  the same tests on the genuine Chainlink grid and the key input differs by
+  a factor of 3.6:
+      Binance 1s last trade   0.384 bp/s   -> 6.6bp per 5m window
+      Chainlink 1s grid       0.108 bp/s   -> 1.9bp per 5m window  (btc)
+                              0.185 bp/s   -> 3.2bp                (eth)
+  Binance last-trade prints carry bid-ask bounce; the Chainlink grid does
+  not. So most of what I measured as "tilt" on Binance was microstructure
+  noise, and two conclusions built on it fall:
+  (1) "The tilt mean-reverts." Artifact. A noisy tilt reverts BY
+      CONSTRUCTION — big measured values are mostly noise and regress. On
+      the clean feed at 1-2bp the realised win rate is ABOVE the random
+      walk (btc 88% vs model 78% at T+0), not below.
+  (2) "The book pays ~63% of the model, so nothing is left." On the real
+      feed it pays 48% (btc, +0.0979 vs +0.2033 per bp) and 35% (eth,
+      +0.0434 vs +0.1227).
+  MY DEFENCE OF THE PROXY WAS ALSO INVALID and that is the part worth
+  remembering. I argued the proxy was safe because the win rate scored
+  against real settlement (55.5%) matched the self-settled one (55.2%).
+  Both used the SAME noisy tilt, so that comparison could not detect
+  attenuation. It tested nothing. Correlated errors do not cross-check.
+  WHAT THE REAL FEED SAYS, 5m, quote within 45s of the open (median 11s),
+  ask taken as mid + 0.005, 1.47 days:
+      btc  |tilt| 1.0-2.0bp  n=16  87.5% at 0.637  ->  +22.1c/sh  [lo -1.4c]
+      eth  |tilt| 1.0-2.0bp  n=21  76.2% at 0.601  ->  +14.4c/sh  [lo -6.9c]
+      btc  ALL              n=360  55.3% at 0.530  ->   +0.5c/sh  [lo -4.7c]
+      eth  ALL              n=319  52.0% at 0.521  ->   -1.9c/sh  [lo -7.3c]
+  The edge, if it is one, is NOT in the average window. It is the ~5-7% of
+  windows that open more than 1bp off strike, roughly 15-20 a day per coin,
+  and BOTH COINS AGREE THERE. That is the first time in this whole week
+  that two independent samples have pointed the same way. It is also n=16
+  and n=21 with lower bounds still under zero, so it is a lead, not a
+  result. No bot change. Let the grid and the T+2/T+15/T+30 book recording
+  accumulate and re-run; the ask is currently a mid plus an assumed half
+  spread, and the recorders will replace that with the real number.
+
+- 2026-08-10 PRICE_CURVE, FIRST 9h OF BOOK DATA. Signal accuracy against
+  what was charged, btc 5m, whole population:
+      lead 120  77.1% quoted 98%  ask 0.758      lead 30  95.8% q67% 0.878
+      lead  60  82.1% quoted 87%  ask 0.797      lead 20  97.6% q32% 0.902
+      lead  45  89.6% quoted 82%  ask 0.846      lead  6  97.5% q12% 0.715
+  The quote rate falling from 98% to 12% as the close approaches is the
+  drought, now measured on the full population rather than inferred.
+  Every properly-conditioned cell in the by-price table has a NEGATIVE
+  lower bound. The one cell the tool flagged positive is n=3. Nine hours is
+  not a sample; this is a baseline to re-run against, nothing more.
+
+- 2026-08-10 PARITY AUDIT COULD NOT RUN — MY PATH BUG, NOW FIXED. Each unit
+  keeps its own ledger at bot/data/<unit>/paper.db; the tool looked for
+  bot/data/paper.db and exited. It now discovers every unit ledger under
+  bot/data/*/paper.db, prints per-unit coverage, and pools. The prediction
+  recorded before it runs stands unchanged.

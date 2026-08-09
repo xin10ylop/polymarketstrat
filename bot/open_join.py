@@ -177,9 +177,14 @@ def main():
           f"slope = {slope:+.4f} of price per bp")
     print(f"  a random walk would call a bp worth {full:+.4f}; the book is "
           f"paying {100*slope/full if full else 0:.0f}% of that.")
-    print("  The tilt MEAN-REVERTS, so its true worth is BELOW the random")
-    print("  walk's number, not above it. A book at 60%+ of the model is")
-    print("  therefore not leaving anything on the table.")
+    print("  A gap here is NOT an edge by itself — the model is only a")
+    print("  yardstick. Read it against the realised win rates above: the")
+    print("  tilt is worth what it actually won, not what the model says.")
+    print("  (An earlier run of this on Binance 1s trades concluded the tilt")
+    print("  mean-reverts and the book was fully paying. That was wrong —")
+    print("  Binance last-trade noise is ~3.6x the Chainlink grid's 1s vol,")
+    print("  so most of the measured tilt was bid-ask bounce, which reverts")
+    print("  by construction. On this feed the reversion is much weaker.)")
     print(f"quote age: median {ages[len(ages)//2]}s, "
           f"p90 {ages[9*len(ages)//10]}s")
     print("\nfee note: 0.07*p*(1-p) peaks at 1.75c/share at p=0.50 and is")

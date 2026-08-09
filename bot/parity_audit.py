@@ -43,11 +43,14 @@ the record stands.
 
 Read-only. Opens the ledger read-only and writes nothing.
 """
+import glob
 import json
 import os
 import sqlite3
 
-DB = os.environ.get("DB", "bot/data/paper.db")
+# every unit keeps its own ledger under bot/data/<unit>/paper.db, so pool them
+DB = os.environ.get("DB", "")
+ROOT = os.environ.get("DATA_ROOT", "bot/data")
 DROP = float(os.environ.get("DROP", "0.05"))     # what counts as a collapse
 FEE = float(os.environ.get("TAKER_FEE_MULT", "0.07"))
 STRAT = os.environ.get("STRAT", "snipe")
@@ -67,10 +70,9 @@ def wilson(k, n):
     return (max(0.0, c - h), min(1.0, c + h))
 
 
-def main():
-    if not os.path.exists(DB):
-        raise SystemExit(f"no ledger at {DB}")
-    db = sqlite3.connect(f"file:{DB}?mode=ro", uri=True)
+def load(path):
+    """(settled takes, joined [(order, pre_ask, post_ask)]) for one ledger."""
+    db = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
 
     # orders that actually filled, with settled economics rolled up per order
     orders = {}
@@ -123,19 +125,41 @@ def main():
             continue
         e = min(cands, key=lambda e: abs(e[0] - o["ts"]))
         joined.append((o, e[2], e[3]))          # order, pre_ask, post_ask
+    return list(settled.values()), joined
 
-    tot_orders, tot_pnl = len(settled), sum(o["pnl"] for o in settled.values())
-    print(f"ledger {DB} | strategy {STRAT}* | {tot_orders} settled takes, "
-          f"${tot_pnl:+,.2f}")
-    print(f"depth telemetry joined to {len(joined)} of them "
-          f"({100*len(joined)/max(1,tot_orders):.0f}%)"
-          + ("" if len(joined) >= 0.6 * tot_orders else
-             "  <-- LOW: the rest predate the telemetry and are NOT covered"))
+
+def main():
+    paths = ([DB] if DB else
+             sorted(glob.glob(os.path.join(ROOT, "*", "paper.db"))))
+    paths = [p for p in paths if os.path.exists(p)]
+    if not paths:
+        raise SystemExit(f"no ledger found under {ROOT}/*/paper.db (set DB=)")
+
+    settled, joined = [], []
+    print(f"{'unit':>14} {'takes':>7} {'PnL':>11} {'joined':>7} {'joined PnL':>12}")
+    for p in paths:
+        s, j = load(p)
+        if not s:
+            continue
+        settled += s
+        joined += j
+        print(f"{os.path.basename(os.path.dirname(p)):>14} {len(s):>7} "
+              f"{sum(o['pnl'] for o in s):>+11.2f} {len(j):>7} "
+              f"{sum(o['pnl'] for o, _, _ in j):>+12.2f}")
+
+    tot_orders, tot_pnl = len(settled), sum(o["pnl"] for o in settled)
+    print(f"\npooled: {tot_orders} settled takes, ${tot_pnl:+,.2f} | "
+          f"depth telemetry joined to {len(joined)} "
+          f"({100*len(joined)/max(1,tot_orders):.0f}%)")
     if not joined:
-        print("\nnothing joinable — cannot answer the question from this ledger")
+        print("\nnothing joinable — the depth telemetry does not cover these "
+              "fills, so this question cannot be answered from the ledgers")
         return
     cov_pnl = sum(o["pnl"] for o, _, _ in joined)
-    print(f"those {len(joined)} takes carry ${cov_pnl:+,.2f} of the total\n")
+    print(f"those {len(joined)} takes carry ${cov_pnl:+,.2f} of it"
+          + ("" if len(joined) >= 0.6 * tot_orders else
+             "\nCOVERAGE IS LOW — the rest predate the telemetry and this "
+             "audit says nothing about them") + "\n")
 
     coll = [j for j in joined if j[1] - j[2] >= DROP]
     clean = [j for j in joined if j[1] - j[2] < DROP]
