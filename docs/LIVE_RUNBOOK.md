@@ -1292,3 +1292,64 @@ them in that order.
   898/885/870/840/780 on 15m). That moment has never been recorded and
   cannot be back-filled. NO BOT CHANGE, and none until the tilt survives a
   second disjoint sample and the measured open price leaves room after fees.
+
+- 2026-08-10 THE OPENING TILT IS REAL, IS GENUINELY NEW — AND IS ALREADY
+  PRICED. Measured here, not on the droplet: 21 days of Binance 1s closes
+  for BTC and ETH joined to real Polymarket settlements and to the CLOB
+  price-history endpoint, which is public and retrospective and therefore
+  answered in an hour what the book recorders would need a week to answer.
+  STEP 1 — does the tilt predict? Self-settled, 1998 windows, BTC 5m:
+      |tilt|      n    win%        95% CI    random-walk model
+      0.0-0.5   923   52.8%  [49.5,56.0]%          50.8%
+      0.5-1.0   349   58.5%  [53.2,63.5]%          54.4%
+      1.0-2.0   398   53.3%  [48.4,58.1]%          58.6%
+      2.0-3.0   177   58.8%  [51.4,65.7]%          64.4%
+      3.0-5.0   114   64.0%  [54.9,72.3]%          71.8%
+      5.0-8.0    31   58.1%  [40.8,73.6]%          82.7%
+      ALL      1998   55.2%  [53.0,57.3]%
+  Yes: +5.2 points, z ~ 4.6. But note it falls FURTHER below the random
+  walk the larger the tilt gets. The tilt mean-reverts, so it is worth
+  materially less than the diffusion says — the fitted realised value is
+  ~0.031 of price per bp against the model's 0.060.
+  Also note the tilt is half the size I guessed: sd 1.68bp, not 2.8bp, on
+  measured vol of 0.384 bp/s rather than the 0.9 I assumed.
+  STEP 2 — does the book price it? Slope of (quote at the open - 0.50) on
+  the tilt, same method both sides of the cutover:
+      BTC pre-change   (Aug 1-6, tilt worthless)   +0.0024 per bp   n=1438
+      BTC post-change  (Aug 7-9)                   +0.0375 per bp   n= 847
+      ETH post-change  (Aug 7-9)                   +0.0172 per bp   n= 847
+  The pre-change slope is the control and it is flat, which is exactly what
+  a blind book looks like and is what validates the measurement. Post
+  change both coins price it, correlation +0.30 to +0.33. BTC's +0.0375 is
+  ABOVE the tilt's realised worth of ~0.031. The book is not underpaying.
+  STEP 3 — what is left after fees?
+      BTC post-change  ALL  55.5% at 0.527  ->  +1.00c/sh  [lower -2.36c]
+      ETH post-change  ALL  54.5% at 0.528  ->  -0.05c/sh  [lower -3.41c]
+      BTC pre-change   ALL  52.6% at 0.508  ->  -0.02c/sh   (placebo)
+  Nothing. The single cell that looked alive — BTC 0.5-1.0bp, +12.4c/sh,
+  lower bound +1.05c, n=73 — does not replicate on ETH (-4.69c) and is
+  non-monotonic against the 1.0-2.0bp cell beside it. That is the exact
+  shape of the four cells already killed out of sample this week. Not
+  wiring it.
+  WHY THE FEE DECIDES THIS. 0.07*p*(1-p) is 1.75c/share at 0.50 and 0.14c
+  at 0.98 — 12.5x. Trading at the open means paying the worst fee on the
+  board, so the edge must clear ~2 points of win rate before it clears
+  zero. The tilt's whole unpriced residue is smaller than that.
+  FEED NOISE IS NOT HIDING THE SIGNAL, which was the obvious objection to
+  using Binance as a stand-in for Chainlink. If basis noise were eating it,
+  the win rate scored against REAL Polymarket settlement would fall below
+  the self-settled one. It does not: 55.5% against 55.2%. bot/open_join.py
+  reruns the whole thing on the droplet's genuine Chainlink grid anyway.
+
+- 2026-08-10 THE OLD MECHANISM IS GONE FROM THE ENTIRE SHORT-HORIZON BOOK.
+  The edge that produced the record was resolver-feed != book-feed. Checked
+  every up-down family on gamma: btc, eth, sol, xrp and doge, at both 5m
+  and 15m, all ten now read data.chain.link/streams/<coin>-usd-twap-*. Not
+  one family was left behind on the spot rule. There is no corner of this
+  complex where the original trade is still legal.
+  STANDING CONCLUSION FOR 5m/15m: measured at the close (asks 0.98-0.99
+  where our call is perfect), in the middle (divergence refuted), and now
+  at the open (tilt priced at or above its worth, both coins). Three
+  independent looks, same answer. These markets are priced against us at
+  every point in the window we can measure. Any further work on this
+  complex needs a NEW mechanism, not a better estimator.
