@@ -48,12 +48,25 @@ def load_grid():
     return g
 
 
-def official(wts):
+def official(wts, _tries=4):
+    """(wts, 'up'|'down'|None). None means UNRESOLVED OR UNREACHABLE.
+
+    Retries with backoff: gamma rate-limits after a few hundred requests, and
+    a silent swallow there reads as "no markets exist", which is how an eth
+    run once reported 0 settled windows against a full grid.
+    """
+    for attempt in range(_tries):
+        try:
+            req = urllib.request.Request(
+                f"https://gamma-api.polymarket.com/markets?slug={SLUG}{wts}&closed=true",
+                headers=HDRS)
+            a = json.load(urllib.request.urlopen(req, timeout=30))
+            break
+        except Exception:  # noqa: BLE001
+            if attempt == _tries - 1:
+                return wts, None
+            time.sleep(0.5 * (2 ** attempt))
     try:
-        req = urllib.request.Request(
-            f"https://gamma-api.polymarket.com/markets?slug={SLUG}{wts}&closed=true",
-            headers=HDRS)
-        a = json.load(urllib.request.urlopen(req, timeout=30))
         if not a:
             return wts, None
         m = a[0]

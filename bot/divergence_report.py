@@ -34,6 +34,7 @@ handful that filled. Read-only.
 """
 import os
 import sqlite3
+import time
 from concurrent.futures import ThreadPoolExecutor
 
 from bot.twap_verify import COIN, FAMILY, NSEC, WINDOW, load_grid, official
@@ -71,6 +72,13 @@ def main():
         for wts, lead, side, ask, sz, err in db.execute(q):
             book[(wts, lead, side)] = (ask, sz, err)
 
+    bk_lo = min((w for (w, _, _) in book), default=None)
+    bk_hi = max((w for (w, _, _) in book), default=None)
+    if bk_lo is not None:
+        print(f"book covers {time.strftime('%m-%d %H:%M', time.gmtime(bk_lo))}"
+              f" -> {time.strftime('%m-%d %H:%M', time.gmtime(bk_hi))} UTC "
+              f"({(bk_hi-bk_lo)/3600:.1f}h); divergence is ~6% of windows, so "
+              f"expect ~{0.06*(bk_hi-bk_lo)/WINDOW:.0f} priced samples so far.\n")
     lo, hi = min(g), max(g)
     wtss = [w for w in range(lo - lo % WINDOW, hi + WINDOW, WINDOW)
             if w - NSEC >= lo and w + WINDOW <= hi]
@@ -120,7 +128,8 @@ def main():
             if twap_side == spot_side:
                 continue                      # no divergence, no trade
             ask, sz, err = book.get((w, L, twap_side), (None, None, 0))
-            rows.append((twap_side == winner, ask, sz, err))
+            in_book = bk_lo is not None and bk_lo <= w <= bk_hi
+            rows.append((twap_side == winner, ask, sz, err, in_book))
         if not rows:
             print(f"{L:>5} {0:>8}")
             continue
@@ -131,10 +140,12 @@ def main():
         # priced subset: a failed fetch is unknown, NOT an absent quote
         pr = [r for r in rows if r[1] is not None and not r[3]]
         known_side = [r for r in rows if not r[3]]
+        inb = sum(1 for r in rows if r[4])
         head = (f"{L:>5} {n:>8} {100*p:>5.0f}% "
                 f"[{100*clo:>4.0f},{100*chi:>4.0f}]%")
         if not pr or not known_side:
-            print(head + " |   (no book data at this lead)")
+            print(head + f" |   {inb}/{n} of these windows fall inside the "
+                         f"book recording; {sum(1 for r in rows if r[1] is not None)} had a quote")
             continue
         avg = sum(r[1] for r in pr) / len(pr)
         # EV uses the win rate of the WHOLE divergence population, and its
