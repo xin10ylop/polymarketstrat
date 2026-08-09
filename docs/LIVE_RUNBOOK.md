@@ -1229,3 +1229,66 @@ them in that order.
   results on this project died out of sample. This one gets the same
   treatment: no action until the price is measured and the signal survives
   days it has not seen.
+
+- 2026-08-10 DIVERGENCE: REFUTED BY THE PRICES. The book recording came back
+  and it kills the hypothesis above. I predicted that a spot-driven book
+  would price the TWAP side at 0.10-0.30. What it actually charges, btc,
+  real Chainlink feed:
+      lead   our win rate   predicted    actual ask
+        3          100%     0.10-0.30         0.990
+        6          100%     0.10-0.30         0.987
+       10          100%     0.10-0.30         0.980
+       30           90%             —         0.777
+       45           73%             —         0.943
+       60           61%             —         0.598
+  The book SIDES WITH THE TWAP. It is not making the spot mistake, so there
+  is no wrong price to buy. Point (2) of the claim above inverts too: the
+  reason the quote rate is 4-12% is that the TWAP side IS the side the book
+  thinks is winning, which is exactly the side that stops being offered.
+  ETH is worse than refuted at L=30/45 — 50% and 56%, i.e. the market is
+  better than our signal there. Every positive-EV cell rests on 1-5 quoted
+  observations and every lower bound is negative. RETRACTED in full.
+
+- 2026-08-10 A DEAD END CLOSED CHEAPLY: SYNTHETIC LIQUIDITY. Polymarket's
+  CTF exchange mint-matches complementary BUY orders, so a bid on DOWN is an
+  offer on UP. book_record has been storing bid/bid_sz since day one and no
+  report ever read those columns — if the per-token books were separate,
+  the "winning side is not offered" drought would have been a measurement
+  artifact and the fix would have been free. Checked live on two windows:
+  ask(up) == 1 - bid(down) to the tick, both sides, both windows. The API
+  already merges. The drought is real. No further work here.
+
+- 2026-08-10 WHAT THE RULE CHANGE ACTUALLY CREATED: THE OPEN IS OFF-STRIKE.
+  Every study since the cutover, mine included, has aimed at the last few
+  seconds of the window. That is where the book is empty and the winner
+  costs 0.98. It is also the region the ledger says never paid: px >= 0.95
+  earned -$61.50 on 15,814 shares, z = -0.06, while px < 0.80 earned 80% of
+  all profit.
+  The rule change did something at the OTHER end of the window that nobody
+  has looked at. Under spot/spot settlement the strike was spot at the open:
+  at T the price WAS the strike and the market was a genuine coin flip.
+  The strike is now a TRAILING 30s MEAN (60s for 15m). A trailing mean lags.
+  So at T+0 spot already sits some distance from the number it will be
+  judged against, the closing average is centred on spot rather than on the
+  strike, and the market does not open at 50/50 — it opens tilted, and the
+  tilt is readable at T+0 from the grid with no forecast of any kind.
+  Under the old rule this offset was identically zero. The trade could not
+  have existed before 08-07. It is not the old edge relocated.
+  Rough size, BTC at ~0.9bp/s: the trailing-mean offset has sd ~2.8bp
+  against a 15bp terminal move, i.e. z ~ 0.18, so a typical open is worth
+  ~57/43 and a 2-sigma open ~64/36 — against a book quoted 0.49/0.51 with
+  hundreds of shares a side. Both the price region and the depth are the
+  ones the historical record liked.
+  MEASUREMENT, NOT A CLAIM. bot/open_offset.py scores it on grid + official
+  outcomes only, no book, so nothing it prints is P&L. It buckets by tilt,
+  prints the diffusion model's value beside the realised win rate as a
+  sanity yardstick, prints the highest price that still breaks even AT THE
+  95% LOWER BOUND, and runs a far-shuffle control that must land on 50%.
+  bot/price_curve.py is the companion: accuracy against what the book
+  actually charged, decomposed BY PRICE — the split that located the old
+  edge — conditioning hit rate and price on the same rows, which is the
+  step whose absence produced the retracted maker result.
+  The book recorders now sample T+2/T+15/T+30 (leads 298/285/270 on 5m,
+  898/885/870/840/780 on 15m). That moment has never been recorded and
+  cannot be back-filled. NO BOT CHANGE, and none until the tilt survives a
+  second disjoint sample and the measured open price leaves room after fees.

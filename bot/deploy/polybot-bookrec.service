@@ -16,7 +16,11 @@ Environment=FAMILY=5m
 # accuracy at >5bp holds far earlier than the original 120s ceiling
 # (btc 15m: 98.6% at 180s, 95.5% at 300s) and those prices have
 # never been observed. Cannot be back-filled, so record them now.
-Environment=LEADS=240,180,150,120,90,60,45,30,20,10,6,3
+# 298/285/270 are T+2, T+15, T+30 — the OPEN. Since the rule change the
+# strike is a trailing 30s mean, so the window opens off-strike and the
+# tilt is knowable at T+0. That is the one moment no recorder has ever
+# sampled, and it is where the book is deep and priced near 0.50.
+Environment=LEADS=298,285,270,240,180,150,120,90,60,45,30,20,10,6,3
 Environment=BOOK_DIR=/opt/polymarketstrat/bot/data/bookcal
 ExecStart=/opt/polymarketstrat/venv/bin/python -m bot.book_record
 Restart=always
