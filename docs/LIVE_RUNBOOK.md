@@ -1042,3 +1042,25 @@ them in that order.
   the file (optimistic on queue position, pessimistic on unseen dips).
   If the fill rate is a few percent this is dead; if it is 20%+ at 0.96,
   the original strategy survives as a maker and the next step is papering it.
+
+- 2026-08-09 MAKER ROUTE: THIN, NOT DEAD — and my own tool lied first. The
+  first maker_report run printed $129/day (btc) and $150/day (eth) at a 0.98
+  bid. Both figures were artifacts of two bugs I wrote into it:
+  (1) it counted a match as a FILL whenever the ask at entry was already at
+  or below our bid — that is a TAKER trade, and 94% of those "maker fills"
+  were exactly that, i.e. the break-even trade we had already rejected;
+  (2) it computed EV from the realised outcome of the filled subset, which
+  was 17/17 and 16/16, instead of the accuracy measured over hundreds of
+  windows. A clean run of 17 at 94.6% true accuracy happens 39% of the time.
+  CORRECTED (EV = measured accuracy - price, genuine resting fills only):
+    btc  0.98 -3.40c  0.96 -1.40c  0.94 +0.60c  0.92 +2.60c  0.90 +4.60c
+    eth  0.98 -3.70c  0.96 -1.70c  0.94 +0.30c  0.92 +2.30c  0.90 +4.30c
+  Profitable only at 0.94 and below, and the genuine resting-fill count
+  there is 1-2 per bid level across 34 HOURS. Both coins together:
+  ~$43/day at 250 clip, on roughly 3-5 fills/day, with adverse selection
+  entirely unpriced. That is not nothing — the old strategy ran $60-100/day
+  — but it rests on single-digit fill counts, so it is a hypothesis, not a
+  result. maker_report.py now excludes @touch fills and uses the measured
+  accuracy table; the raw first-run numbers must never be quoted.
+  NEXT: more days of book data (recorders running on 3 markets), then a
+  paper maker bot ONLY if the fill count holds up at 0.92-0.94 over a week.

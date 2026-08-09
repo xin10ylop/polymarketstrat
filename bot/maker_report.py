@@ -30,6 +30,13 @@ from concurrent.futures import ThreadPoolExecutor
 
 from bot.twap_verify import COIN, FAMILY, NSEC, WINDOW, load_grid, official
 
+# Accuracy MEASURED on the real grid over hundreds of windows
+# (bot/timing_scan.py). EV must use this, never the realised outcome of a
+# handful of filled trades — a clean run of 17 is not a 100% hit rate, and
+# reading it as one is how this file lied the first time it was run.
+ACC = {("btc", 120): 0.946, ("btc", 90): 0.953, ("btc", 60): 0.985,
+       ("btc", 45): 0.985, ("eth", 120): 0.943, ("eth", 90): 0.969,
+       ("eth", 60): 0.944, ("eth", 45): 1.000}
 ENTRY_LEADS = [int(x) for x in os.environ.get("ENTRY", "120,90,60,45").split(",")]
 BIDS = [float(x) for x in os.environ.get("BIDS", "0.98,0.96,0.94,0.92,0.90").split(",")]
 GAP_BPS = float(os.environ.get("GAP_BPS", "2.0"))
@@ -96,13 +103,14 @@ def main():
         return "up" if gap > 0 else "down"
 
     print(f"{'entry':>6} {'bid':>6} {'sig':>5} {'filled':>7} {'fill%':>7} "
-          f"{'@touch':>7} {'hit%':>6} {'EV c/sh':>8} {'$ total':>9} {'$/day':>8}")
+          f"{'@touch':>7} {'obs%':>6} {'EV c/sh':>8} {'$ total':>9} {'$/day':>8}")
     best = None
     for L in ENTRY_LEADS:
         for P in BIDS:
-            sig = fills = wins = 0
+            sig = fills = wins = real = 0
             touch = 0
             pnl = 0.0
+            obs = []
             for w, winner in sorted(won.items()):
                 side = signal(w, L)
                 if side is None:
@@ -125,19 +133,27 @@ def main():
                 touch += t_flag
                 won_it = side == winner
                 wins += won_it
-                pnl += ((1.0 if won_it else 0.0) - px) * CLIP
-            if not sig or not fills:
+                if t_flag:
+                    continue          # crossable at entry = a TAKER trade,
+                                      # already measured and already priced
+                real += 1
+                obs.append(won_it)
+                pnl += (ACC.get((COIN, L), 0.0) - px) * CLIP
+            if not sig or not real:
                 continue
-            ev = pnl / (fills * CLIP)
+            ev = pnl / (real * CLIP)
             per_day = pnl * 24.0 / span_h if span_h else 0.0
-            print(f"{L:>6} {P:>6.2f} {sig:>5} {fills:>7} {100*fills/sig:>6.0f}% "
-                  f"{100*touch/fills:>6.0f}% {100*wins/fills:>5.0f}% "
+            print(f"{L:>6} {P:>6.2f} {sig:>5} {real:>7} {100*real/sig:>6.0f}% "
+                  f"{100*touch/fills:>6.0f}% {100*sum(obs)/len(obs):>5.0f}% "
                   f"{100*ev:>7.2f}c {pnl:>9.2f} {per_day:>8.2f}")
             if best is None or per_day > best[2]:
                 best = (L, P, per_day, fills, 100 * ev)
 
-    print("\n@touch = share of fills that were already crossable at entry "
-          "(a taker trade, not a maker one).")
+    print("\n'filled' counts GENUINE resting fills only. @touch is the share of")
+    print("raw matches that were already crossable at entry — those are taker")
+    print("trades, already measured as break-even, and are EXCLUDED from EV.")
+    print("EV uses measured accuracy; obs% is the realised rate of the filled")
+    print("few, shown only so you can see how small it is.")
     print("Fill counts assume we win the queue at our price and that offers")
     print("only move at the 9 sampled instants — optimistic on the first,")
     print("pessimistic on the second. Order of magnitude only.")
