@@ -1353,3 +1353,51 @@ them in that order.
   independent looks, same answer. These markets are priced against us at
   every point in the window we can measure. Any further work on this
   complex needs a NEW mechanism, not a better estimator.
+
+- 2026-08-10 THE PARITY AUDIT, BUILT — AND A PREDICTION MADE BEFORE IT RUNS.
+  Confirmed by reading the code, not by inference: snipe_price_floor
+  defaults to 0.0, so the post-latency recheck in bot/strategies/snipe.py
+  accepts ANY collapse. A book that falls 0.97 -> 0.01 during the 0.5s
+  latency gate still clears _ask_ok, and PaperExecutor.take then sweeps the
+  wreckage from the cheapest level up.
+  WHAT LIVE ACTUALLY DOES, stated precisely so the counterfactual is right.
+  Live skips the sleep, sizes and prices off the PRE-latency book, and sends
+  a marketable limit at snipe_ask_max. That order does reach the collapsed
+  book — an FAK at 0.97 sweeps a 0.29 ask — so the fill is not fictional.
+  What is optimistic is the RACE: paper takes the top of the collapsed
+  ladder deterministically, while a real order lands a quarter-second late
+  into the exact moment every other taker is grabbing the same cheap shares.
+  A live fill price therefore sits between the collapsed ask and our limit.
+  MY EARLIER PARTIAL DISSENT WAS HALF RIGHT AND I WANT IT ON THE RECORD AS
+  HALF WRONG. Right: live does sweep the same collapsed book, so this is
+  not a pure paper-only artifact. Wrong: I treated that as making the issue
+  minor. It does not. Winning the race is the whole difference between
+  paying 0.29 and paying 0.97 on the trades that carry 81% of the profit.
+  THE PREDICTION, WRITTEN DOWN FIRST. Under the old rule the book tracked
+  the exchange TAPE and we settled on CHAINLINK. A collapse to 0.29 on a
+  side our oracle rated fv>=0.995 is the tape saying we are wrong while
+  Chainlink says we are right — which IS the feed-divergence trade, in its
+  purest form. So I expect collapse fills to show a HIGH win rate, not a
+  low one, and the audit's real finding to be about PRICE, not accuracy.
+  If instead collapse fills win less than clean ones, my whole account of
+  the old mechanism is wrong and it must be retracted.
+  bot/parity_audit.py joins the depth telemetry (ask ladder at signal time
+  and after the latency gate) to the settled takes and reports: the win
+  rate of collapse vs clean fills, which needs no assumption about live at
+  all; then RECORDED (won every race), AT SIGNAL (lost every race), and
+  DROPPED (collapse path removed), decomposed by entry price. Live lies
+  between the first two. NO CODE CHANGED — the price floor stays 0.0 until
+  the number says what it is worth.
+
+- 2026-08-10 NEXT MECHANISM, SCOPED NOT BUILT. The thing that paid was two
+  feeds disagreeing about one event. That is gone from Polymarket's whole
+  short-horizon complex, but it is not gone from the world. Checked from
+  here: Kalshi is reachable and its BTC series settles on CF BENCHMARKS
+  BRTI, while Polymarket's untouched 1h family settles on BINANCE via UMA
+  and the 5m/15m complex settles on CHAINLINK. Three different resolvers,
+  one underlying, overlapping clocks. That is the same shape as the trade
+  that produced the record, in a place the rule change did not reach.
+  This is a scoping note, not a result. Nothing is built and nothing is
+  claimed. It goes ahead of task #18 (the stale Kalshi overlay) only after
+  the parity audit reports, because the parity number decides whether this
+  project's historical record can be trusted as a template at all.
