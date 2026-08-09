@@ -982,3 +982,38 @@ them in that order.
   and its notes should be mined before building anything.
   PROCESS NOTE: two Fable 5 review agents were launched at the owner's
   request and both died on out-of-usage-credits before returning findings.
+
+- 2026-08-09 SELF-REVIEW (owner asked for a Fable 5 audit; both agents died
+  on usage credits, so this is the Opus 5 review of my own chain).
+  FIRST, THE SUSPICIOUS NUMBER: L=45 fv>=0.9999 gave n=74, 73 correct on BOTH
+  Aug 7 and Aug 8 — identical, which smelled like a duplicated dataset. It is
+  not: verified different price ranges (64167-65391 vs 64823-65192),
+  non-overlapping window ids, and 3x different realised vol (0.359 vs
+  0.110bp). The stability is the vol-scaling WORKING — a fv gate normalises
+  by vol*sqrt(tau), so it admits small gaps on calm days and demands big ones
+  on busy days, which is exactly why signal count and accuracy hold steady.
+  That is evidence FOR the gate, not against it.
+  INDEPENDENT ASSET CHECK: same gate on ETH. L=45 gives 55/100% (Aug 7) and
+  92/100% (Aug 8). POOLED over btc+eth x 2 days, across a 5x vol range
+  (0.110-0.536bp): L=45 -> 293/295 = 99.3%; L=30 -> 98.1% (n=424); L=60 ->
+  96.4% (n=196). L=45 is the peak and it is not a one-cell fluke.
+  ECONOMICS at L=45: taker EV +0.72c/sh against the 0.985 ask, maker at 0.96
+  +3.32c/sh. Wilson 95% CI on the accuracy is [97.56%, 99.81%]; at the LOWER
+  bound the taker is -1.04c (dead) but the maker at 0.96 is still +1.56c.
+  That asymmetry is the whole argument for the maker route.
+  WEAKEST LINK, STATED PLAINLY: the 0.985 ask at L=45 rests on TWO
+  observations from the 20-window book sample, and winner-side quote
+  availability (58% at L=30) is measured on the same tiny sample. Every
+  dollar figure above is hostage to those two numbers. The book recorders
+  now running on btc 5m / eth 5m / btc 15m will replace them with hundreds
+  within a day; nothing should be built or restarted before they do.
+  OTHER REVIEW FINDINGS: (1) no lookahead — vol uses [t-300,t], strike is
+  pre-open, and at L>=30 the closing average has not begun so est is simply
+  the spot; (2) Binance is a proxy for Chainlink, and its basis noise can
+  only DEPRESS measured accuracy, so 99.3% is a floor not a ceiling; (3) the
+  fv denominator still prices the closing TICK's uncertainty, which is wider
+  than the average's — the gate is conservative by construction, which is
+  why a 0.9999 threshold behaves like a much higher true confidence;
+  (4) both test days were calm in absolute terms (0.32-1.05%/day) — nothing
+  here speaks to a 3%/day regime; (5) 1 of 20 swept cells surviving OOS is
+  still multiple testing, mitigated but not erased by the ETH replication.
