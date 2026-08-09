@@ -135,6 +135,7 @@ class SnipeStrategy:
         st = self.clob.state(token)
         if not self._ask_ok(st):
             self.near_misses += 1
+            self._eval_snap(wts, side, fv, st)
             return False
         w["attempts"] += 1
         if w["attempts"] > 1:
@@ -217,9 +218,36 @@ class SnipeStrategy:
         elif st.best_ask_size > self.cfg.snipe_skip_ask_above:
             r = "wall"
         else:
+            self._last_reason = None
             return True
         self.nm[r] = self.nm.get(r, 0) + 1
+        self._last_reason = r
         return False
+
+    def _eval_snap(self, wts, side, fv, st):
+        """One row per window on the confident-but-no-trade path.
+
+        The STATUS tallies say WHY we skipped but not what the book looked
+        like, and after the 2026-08-07 rule change nearly every tick is
+        confident — so the fill drought has to be diagnosed from the book
+        itself: is the winning side empty, frozen, or just expensive, and are
+        we picking both sides or stuck on one? Sampled once per window.
+        """
+        if getattr(self, "_snap_wts", None) == wts:
+            return
+        self._snap_wts = wts
+        try:
+            self.ledger.event("eval_snap", json.dumps({
+                "w": wts, "s": side, "fv": round(fv, 6),
+                "gap_bp": round(getattr(self, "_last_gap_bp", 0.0), 4),
+                "why": getattr(self, "_last_reason", None),
+                "ask": st.best_ask if st is not None else None,
+                "sz": round(st.best_ask_size, 1) if st is not None else None,
+                "bid": st.best_bid if st is not None else None,
+                "age": round(time.time() - st.last_book_ts, 2) if st is not None else None,
+            }, separators=(",", ":")))
+        except Exception:  # noqa: BLE001 - telemetry must never break trading
+            log.debug("eval_snap failed w%s", wts)
 
     def _twap_fv(self, C, n, k, s_adj, vol):
         """P(closing TWAP >= strike) for the venue's post-2026-08-07 rule.
@@ -268,6 +296,7 @@ class SnipeStrategy:
         if abs(gap) / k < self.cfg.snipe_min_gap_bps * 1e-4:
             self.thin_gap += 1
             return None
+        self._last_gap_bp = gap / k * 1e4
         return norm_cdf(gap / sd), u
 
     def _depth_event(self, wts, side, fv, pre, st, filled):
