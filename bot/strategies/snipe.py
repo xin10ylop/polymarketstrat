@@ -1,10 +1,17 @@
 """S2 — basis-corrected oracle-lag terminal snipe.
 
-From T-6s, every 200ms: take the spot close at (now - signal_lag), correct it by
-the rolling oracle/spot basis, and price the binary against the exact oracle
-open K. If P(win) >= 0.995 while a standing ask <= 0.97 with size remains on
-that side, cross it — capped at min(ask, 250 shares): bigger late asks are
-systematically informed (EV collapses above the cap in validation).
+From T-6s, every 50ms: take the spot close at (now - signal_lag), correct it
+by the rolling oracle/spot basis, project the CLOSING TWAP the window now
+settles on (venue rule change 2026-08-07), and price the binary against the
+TWAP strike at the open. If P(win) >= 0.995 while a standing ask <= 0.97
+with size remains on that side, cross it — capped at min(ask, 250 shares):
+bigger late asks are systematically informed (EV collapses above the cap).
+
+STATUS 2026-08-10: the taker premise is not currently supported. Measured
+accuracy at every lead where a quote exists sits at or below the break-even
+the ask demands, on both BTC and ETH. The bot runs to keep the paper series
+continuous and to collect decision telemetry, not because the edge is
+believed. Do not size this up without new evidence.
 
 The signal lag is enforced deliberately: the backtest was validated on 1s-old
 data, so acting on anything fresher would make paper results *optimistic*.
@@ -117,12 +124,21 @@ class SnipeStrategy:
         # we trade. Measured cost of getting this wrong: 08-09, 250 shares at
         # avg 0.33 on a side the book priced at 33%, fv>=0.995, total loss.
         # The UNCERTAINTY term is untouched: vol*sqrt(tau) prices the closing
-        # tick, which is wider than the average's, keeping the original
-        # ~6bp-style distance filter the validated edge was built on.
+        # TICK, which is wider than the average's, so the gate is conservative
+        # in the variance it assumes. It is NOT, as once claimed here, a "~6bp
+        # distance filter": est-k is still roughly the whole window's move, so
+        # at T-6s this fires on ~80% of windows (audit D9). Selectivity comes
+        # from the ask gate, not from this.
         est = s_adj
         if n_twap:
             known_sum, n_present, n_elapsed = self.oracle.twap_known(
                 wts + T, n_twap, self.oracle.last_sample_s + 1)
+            if n_elapsed >= n_twap:
+                # the whole closing average would already be known: only
+                # reachable via clock skew, and it would hand paper a
+                # certainty live could never have. Refuse.
+                self.no_data += 1
+                return False
             if n_elapsed > 0:
                 if n_present / n_elapsed < self.cfg.oracle_twap_min_coverage:
                     self.no_data += 1

@@ -65,13 +65,22 @@ def tokens(wts):
 
 
 def top(token):
-    """(best_ask, ask_size, best_bid, bid_size) — None-safe."""
-    try:
-        b = json.load(urllib.request.urlopen(urllib.request.Request(
-            f"https://clob.polymarket.com/book?token_id={token}",
-            headers=HDRS), timeout=15))
-    except Exception:  # noqa: BLE001
-        return None
+    """(best_ask, ask_size, best_bid, bid_size) or None if the FETCH failed.
+
+    None is a measurement failure, never evidence that the book was empty —
+    an empty book returns a valid response with no levels, which yields
+    (None, None, None, None) instead.
+    """
+    for attempt in (0, 1):
+        try:
+            b = json.load(urllib.request.urlopen(urllib.request.Request(
+                f"https://clob.polymarket.com/book?token_id={token}",
+                headers=HDRS), timeout=15))
+            break
+        except Exception:  # noqa: BLE001
+            if attempt:
+                return None
+            time.sleep(0.4)
     asks = [(float(x["price"]), float(x["size"])) for x in (b.get("asks") or [])]
     bids = [(float(x["price"]), float(x["size"])) for x in (b.get("bids") or [])]
     a = min(asks) if asks else (None, None)
@@ -102,11 +111,11 @@ def main():
                 done.add(L)
                 for side, tok in (("up", toks[0]), ("down", toks[1])):
                     t = top(tok)
-                    if t is None:
-                        continue
+                    err = 1 if t is None else 0
+                    t = t or (None, None, None, None)
                     db.execute(
-                        "INSERT OR REPLACE INTO book VALUES(?,?,?,?,?,?,?,?)",
-                        (wts, L, side, t[0], t[1], t[2], t[3], time.time()))
+                        "INSERT OR REPLACE INTO book VALUES(?,?,?,?,?,?,?,?,?)",
+                        (wts, L, side, t[0], t[1], t[2], t[3], time.time(), err))
                 db.commit()
                 if L == LEADS[0]:
                     n = db.execute("SELECT COUNT(*) FROM book").fetchone()[0]

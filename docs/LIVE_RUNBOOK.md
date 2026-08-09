@@ -1064,3 +1064,69 @@ them in that order.
   accuracy table; the raw first-run numbers must never be quoted.
   NEXT: more days of book data (recorders running on 3 markets), then a
   paper maker bot ONLY if the fill count holds up at 0.92-0.94 over a week.
+
+- 2026-08-10 INDEPENDENT AUDIT (two reviewers, code and numbers). Findings
+  that change conclusions, worst first.
+  * TOLL WAS NEVER MIGRATED. bot/strategies/toll.py still calls the winner
+    from raw spot prints (line ~186) and writes toll.oracle_calls, which
+    bot/main.py:47 reads BEFORE the TWAP branch — so wherever the toll runs,
+    the mismatch tripwire silently reverts to the pre-08-07 rule.
+    polybot-toll.service sets no TOLL_ENABLED=0, no FAMILY: it is btc 5m,
+    toll_enabled, oracle_authoritative, TOLL_PREPOSITION=1, and bootstrap.sh
+    enables it. Spot and TWAP calls disagree on 8% of all windows and 3-5% of
+    the windows the toll actually trades; each wrong call rests 250 shares at
+    0.99 on the LOSING token, ~$250 of wrong-side notional against ~$2.50 of
+    upside. Verified in code: oracle_calls is only written inside
+    _trade_window, which requires toll_enabled AND oracle_authoritative, so
+    the snipe units (TOLL_ENABLED=0) are unaffected — the exposure exists
+    only if polybot-toll itself is running. CHECK AND STOP IT.
+  * THE ACCURACY TABLE IS UNREPLICATED AND PROBABLY 3-5pp OPTIMISTIC. An
+    independent recomputation over pooled 08-07/08-08 gives BTC L=120 89.5%
+    (claimed 94.6), L=90 92.2% (95.3), L=60 94.6% (98.5), L=45 95.2% (98.5);
+    ETH L=120 89.3% (94.3). Seven of nine claimed cells fall outside its 95%
+    CI. Corroborating: my OWN earlier proxy run on 08-07 gave L=90 92.4%,
+    L=60 94.5%, L=45 95.2% — i.e. the runbook holds two inconsistent
+    estimates of the same quantity and the final entry quoted the optimistic
+    one. Suspected mechanism: timing_scan applies MIN_COVER=0.9 to a grid
+    whose density is only 89.5%, so it scores a coverage-selected minority of
+    windows (56 of 332 at L=120). If the lower numbers are right, the taker
+    table goes from "break-even at L=60" to -3.7c/share and EVERY maker bid
+    level flips negative. Resolve by fixing grid density first, then re-running
+    timing_scan and recording raw counts.
+  * THE MAKER ROUTE IS DEAD ON ITS OWN TERMS, independently of the above.
+    maker_report priced a CONDITIONALLY ADVERSE fill set with an
+    UNCONDITIONAL win rate: a row only counts as filled when a later snapshot
+    shows an ask at or below our bid, and on this venue that is close to the
+    definition of "our side is losing" (the winner's ask climbs to 0.99, the
+    loser's falls through 0.94 toward zero). The correct quantity is
+    P(win | filled), which we cannot estimate from 1-2 fills. The reviewer
+    reproduced the bug on a synthetic zero-edge book: truth -$3,850, reported
+    +$402. THE "~$43/day MAKER ROUTE" IS RETRACTED.
+  * edge_report still computes EV and "best lead" from the realised outcome
+    of 7-36 trades — the exact statistic its own footer warns against, and
+    the machinery that produced the retracted 36/36 excitement. Its need%
+    is also measured on the OFFERED subset, which over-represents wrong picks
+    (winner quotes vanish, loser quotes persist), so the taker table is
+    optimistic rather than conservative.
+  * "Observed accuracy beats random-walk theory, so vol clustering" is a
+    CONDITIONING ARTIFACT: theory was evaluated at exactly 2bp while
+    observation averaged the whole |gap|>2bp set (median 5.8bp). Integrated
+    over the observed gap distribution, theory predicts 96.7% at L=60 vs
+    94.5% observed — observation sits at or BELOW the plain random walk.
+    There was never an anomaly to explain.
+  * The fv gate is NOT a "~6bp distance filter" (claimed in the 08-09
+    simplification entry). Replayed live config fires on 77-83% of windows at
+    T-6s at 93-98% accuracy against a 97.2% break-even. Comment corrected.
+  * book_record recorded an HTTP failure as "no offer", and failures cluster
+    at the close where the drought is claimed — so part of the measured
+    quote decay may be the recorder. FIXED: retry once, then store err=1.
+  * snipe could reach u=0 via clock skew (clock_ok tolerates -0.75s), making
+    the closing average fully determined and handing paper a certainty live
+    could never have. FIXED: refuse when n_elapsed >= n_twap.
+  * oracle_tie_bps=2.0 disabled the mismatch tripwire on 34-71% of windows
+    against a ~0.05bp reconstruction error. FIXED: 0.3bp for 5m/15m, 2.0 kept
+    for the 1h family.
+  CONFIRMED UNCHANGED by both reviewers: the rule change and its date, the
+  TWAP reconstruction and oracle.py (clean), the fee model, the out-of-sample
+  collapse of the strict-threshold cells, and the estimator fix. The 1s
+  lookahead in the analysis scripts is real but immaterial (<=0.6pp).

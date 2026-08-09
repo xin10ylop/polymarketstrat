@@ -60,7 +60,7 @@ o2 = oracle_with({**ramp, C: 130.0})
 v2, _ = o2.twap_at(C, 30, "right")
 check("ramp (t-n,t] mean", v2, sum(range(101, 131)) / 30.0)
 check_true("edges differ by exactly one sample",
-           abs(v2 - v) - 1.0 < 1e-9, f"({v2 - v:.4f})")
+           abs(abs(v2 - v) - 1.0) < 1e-9, f"({v2 - v:.4f})")
 
 gappy = {s: 100.0 for s in range(C - 30, C) if s % 3}          # 2/3 present
 o = oracle_with(gappy)

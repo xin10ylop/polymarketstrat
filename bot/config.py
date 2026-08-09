@@ -184,7 +184,13 @@ class Config:
     # cross-check is skipped (logged as near_tie) instead of arming the
     # mismatch halt — sampling dispersion, not a bug signal. Disagreements
     # on windows decided by more than this still halt everything.
-    oracle_tie_bps: float = _env("ORACLE_TIE_BPS", 2.0, float)
+    # 2.0 was sized for spot prints. Against a reconstructed TWAP the
+    # measurement error is ~0.05bp, and a 2bp band switched the mismatch
+    # tripwire off on 34-71% of windows (audit D10). Tighter for the TWAP
+    # families; the 1h family keeps the old band via its own env override.
+    oracle_tie_bps: float = _env("ORACLE_TIE_BPS",
+                                 0.3 if _env("FAMILY", "5m") in ("5m", "15m") else 2.0,
+                                 float)
     # How long past window close the reconciler keeps polling gamma for the
     # official outcome before giving up (no_outcome). 5m/15m publish well
     # inside 10 min, but the 1h family resolves via UMA proposal ~11-13 min
