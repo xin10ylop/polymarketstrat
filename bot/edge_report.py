@@ -73,8 +73,11 @@ def main():
                 return g[kk]
         return None
 
-    print(f"{'lead':>5} {'sig':>4} {'offered':>8} {'avg ask':>8} {'hit%':>6} "
-          f"{'EV c/sh':>8} {'$/trade':>8} {'$ total':>8}   ask on winner/loser")
+    # break-even accuracy is the number to beat: anything below it loses,
+    # however confident we feel. Printing it next to the observed hit rate
+    # stops a small-sample 100% from reading as an edge.
+    print(f"{'lead':>5} {'sig':>4} {'offered':>8} {'avg ask':>8} {'need%':>7} "
+          f"{'hit%':>6} {'EV c/sh':>8} {'$/trade':>8} {'$ total':>8}   ask win/lose")
     best = None
     for L in LEADS:
         sig = 0
@@ -122,19 +125,24 @@ def main():
         av = (f"{100*w_av/w_tot:.0f}%/{100*l_av/l_tot:.0f}%"
               if w_tot and l_tot else "—")
         if not rows:
-            print(f"{L:>5} {sig:>4} {0:>8} {'—':>8} {'—':>6} {'—':>8} {'—':>8} "
-                  f"{'—':>8}   {av}")
+            print(f"{L:>5} {sig:>4} {0:>8} {'—':>8} {'—':>7} {'—':>6} {'—':>8} "
+                  f"{'—':>8} {'—':>8}   {av}")
             continue
         hit = sum(r[2] for r in rows) / len(rows)
         ev = sum(r[2] - r[0] - fee(r[0]) for r in rows) / len(rows)
         dollars = sum((r[2] - r[0] - fee(r[0])) * r[1] for r in rows)
         avg_ask = sum(r[0] for r in rows) / len(rows)
-        print(f"{L:>5} {sig:>4} {len(rows):>8} {avg_ask:>8.3f} {100*hit:>5.0f}% "
-              f"{100*ev:>7.2f}c {dollars/len(rows):>7.2f} {dollars:>8.2f}   {av}")
+        need = 100 * (avg_ask + fee(avg_ask))
+        print(f"{L:>5} {sig:>4} {len(rows):>8} {avg_ask:>8.3f} {need:>6.1f}% "
+              f"{100*hit:>5.0f}% {100*ev:>7.2f}c {dollars/len(rows):>7.2f} "
+              f"{dollars:>8.2f}   {av}")
         if best is None or dollars / len(rows) > best[1]:
             best = (L, dollars / len(rows), len(rows))
 
-    print("\n'offered' = signals where the picked side actually had an ask.")
+    print("\n'need%' = accuracy required just to break even (ask + fee).")
+    print("Compare it to a hit% measured on HUNDREDS of windows, not to the")
+    print("hit% on this page — a clean run of 7 trades is not 100% accuracy.")
+    print("'offered' = signals where the picked side actually had an ask.")
     print("'ask on winner/loser' = how often each side was quoted at all —")
     print("  the winner's number collapsing near the close IS the drought.")
     if best:

@@ -923,3 +923,31 @@ them in that order.
   bot/data/bookcal. Only once that is joined to the grid and outcomes can
   the opportunity be priced. DO NOT move snipe_eval_from_s on the strength
   of accuracy alone: a 98% call bought at 0.99 is a losing trade.
+
+- 2026-08-09 THE EARLIER-LEAD EDGE LOOKS PRICED (first three-way join,
+  bot/edge_report.py, 20 windows — a shape, not a verdict). The book DOES
+  exist earlier: winning-side quote availability runs 89% at L=120s and 95%
+  at L=90s, decaying to 13% at L=3s while the LOSING side stays quoted
+  95-100% throughout. That decay curve is the fill drought, measured
+  directly, and it confirms the T-6s emptiness was the market withdrawing
+  from a decided outcome rather than anything wrong with us. BUT the prices
+  are already there: the side our signal picks is offered at 0.967 (L=120),
+  0.975 (L=90), 0.982 (L=60), 0.985 (L=45), 0.990 (L=30). Cross-referencing
+  those asks against the accuracy measured on the LARGER timing_scan sample
+  (~250 windows, |gap|>2bp) gives break-even vs measured:
+    L=120  need 96.9%  have 94.1% (n=51)  -> -2.82c/sh
+    L= 90  need 97.7%  have 94.9% (n=59)  -> -2.77c/sh
+    L= 60  need 98.3%  have 98.4% (n=63)  -> +0.08c/sh  (i.e. zero)
+    L= 45  need 98.6%  have 98.4% (n=61)  -> -0.20c/sh
+    L= 30  need 99.1%  have 100%  (n=67)  -> +0.93c/sh
+  At the 95% lower confidence bound EVERY lead is negative (-3.0c to -9.3c);
+  the L=30 line uses a 100% run of 67, whose honest floor by the rule of
+  three is 95.5%, which prices at -3.55c. The market is quoting our forecast
+  back to us, slightly better than we can forecast it. DO NOT read the
+  edge_report hit% column as accuracy — 7 clean trades is not 100%; the
+  report now prints a need% column beside it so the comparison is explicit.
+  STATUS: leaning "priced, no edge", NOT concluded. Cheap checks left before
+  calling it: (a) a bigger gap threshold (GAP_BPS=4/6 — if accuracy rises
+  faster than the ask does, an edge could survive in the tail), (b) days
+  rather than hours, (c) a livelier vol regime, (d) eth/sol. Nothing about
+  this changes the oracle migration, which remains correct and verified.
