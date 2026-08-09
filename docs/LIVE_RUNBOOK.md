@@ -841,3 +841,27 @@ them in that order.
   repair means re-deriving the floor with a minimum strike-gap that exceeds
   the plausible 30s/60s spread (|spread| >= |gap| on 3.2% of Aug-7 closes) —
   a design, not a proven edge. Do not restart it on a hunch.
+
+- 2026-08-09 SIMPLIFIED THE ADAPTATION (owner call: "keep the og strategy,
+  just adapt it to the change"). He was right and I had overbuilt it. The
+  bespoke TWAP confidence model is REMOVED. What the venue actually changed
+  for us is TWO things, and only two: the STRIKE (a rolling TWAP at the open,
+  not the open print) and the SETTLED QUANTITY (an average, not the closing
+  tick). Both are facts we must read correctly — the strike now comes from
+  Oracle.twap_at and the reconciler cross-check from twap_winner. Everything
+  else — vol*sqrt(tau), fv>=0.995, the 0.97 cap, clip, budgets — is
+  UNTOUCHED, so the net strategy diff versus the pre-change code is the
+  strike lookup plus a coverage guard. WHY NOT price the average exactly:
+  the honest model puts the sd ~10x tighter, which sounds like an upgrade
+  and is actually the opposite — measured live on 08-09, fv pinned at
+  1.0000 on 6054 of 6087 evaluations. A gate that passes 99.5% of ticks is
+  not a gate; it deletes the selection that IS the strategy. The old
+  vol*sqrt(tau) is now deliberately CONSERVATIVE (it prices the closing
+  tick's uncertainty against a target that is smoother than a tick), and
+  that conservatism is exactly what preserves the ~6bp distance filter the
+  validated edge was built on. Trade frequency should return to roughly the
+  historical ~13 fills/day; if it does not, the cause is the book, not the
+  signal. Derivation of the exact model is kept in the 08-09 migration entry
+  above should we ever want it, but it does not ship. LESSON: when a venue
+  changes a definition, change what READS the definition; re-deriving the
+  model on top of it is a second, unvalidated change riding on the first.

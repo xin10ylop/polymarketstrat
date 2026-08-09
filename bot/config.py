@@ -224,10 +224,6 @@ class Config:
     # this share of the seconds (the recorder saw 89-93% density on a box
     # that was ALSO running seven bots; the bot's own feed backfills)
     oracle_twap_min_coverage: float = _env("ORACLE_TWAP_MIN_COVERAGE", 0.9, float)
-    # TWAP margins are far smaller than spot margins (a confident call now
-    # needs ~0.5bp, not ~10bp). Verification missed one ETH window at
-    # 0.056bp, so refuse to call anything inside our own reconstruction error.
-    snipe_min_gap_bps: float = _env("SNIPE_MIN_GAP_BPS", 0.1, float)
 
     # --- ops ---
     data_dir: str = _env("BOT_DATA_DIR", os.path.join(os.path.dirname(__file__), "data"))

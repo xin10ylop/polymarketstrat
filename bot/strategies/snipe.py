@@ -29,7 +29,6 @@ class SnipeStrategy:
         # telemetry: proves "evaluated, no edge" vs "not evaluating at all"
         self.evals = 0          # ticks where an fv was actually computed
         self.no_data = 0        # ticks skipped for missing feed data
-        self.thin_gap = 0       # TWAP era: real data, margin below the floors
         self.near_misses = 0    # fv extreme but no tradeable ask on that side
         self.signals = 0        # takes attempted
         self.recheck_fail = 0   # ask vanished during the live-latency recheck
@@ -110,21 +109,21 @@ class SnipeStrategy:
         if tau <= 0:
             return False
         s_adj = s_lag * basis
-        vol = max(vol, self.cfg.snipe_vol_floor)
-        if n_twap:
-            # _twap_fv books its own refusal reason: a thin grid is a data
-            # problem, a sub-floor margin is simply no edge. Conflating them
-            # would make every quiet tick look like a broken feed.
-            got = self._twap_fv(wts + T, n_twap, k, s_adj, vol)
-            if got is None:
-                return False
-            fv, u = got
-        else:
-            # input-resolution floor (audit F3): below N spot ticks of distance,
-            # fv is quantization noise dressed as confidence (binds on SOL only)
-            if abs(math.log(s_adj / k)) < self.cfg.snipe_min_ticks * self.cfg.spot_tick / s_adj:
-                return False
-            fv = norm_cdf(math.log(s_adj / k) / (vol * math.sqrt(tau)))
+        # input-resolution floor (audit F3): below N spot ticks of distance,
+        # fv is quantization noise dressed as confidence (binds on SOL only)
+        if abs(math.log(s_adj / k)) < self.cfg.snipe_min_ticks * self.cfg.spot_tick / s_adj:
+            return False
+        # The 2026-08-07 rule change moved the STRIKE (k is now a rolling TWAP)
+        # and the settled quantity (a 30s average, not the closing tick). The
+        # confidence model is deliberately NOT re-derived for that: vol*sqrt(tau)
+        # is the uncertainty of the closing tick, which is ~10x wider than the
+        # average's, so this understates how sure we are. That conservatism is
+        # the point — it keeps the ~6bp distance filter that the validated edge
+        # was built on. Pricing the average exactly makes fv pin at 1.0000 on
+        # 99.5% of ticks (measured 08-09), which is not a gate at all.
+        self._last_gap_bp = math.log(s_adj / k) * 1e4
+        fv = norm_cdf(math.log(s_adj / k)
+                      / (max(vol, self.cfg.snipe_vol_floor) * math.sqrt(tau)))
         self.evals += 1
         self.last_fv = fv
         side = "up" if fv >= self.cfg.snipe_fv_min else (
@@ -248,56 +247,6 @@ class SnipeStrategy:
             }, separators=(",", ":")))
         except Exception:  # noqa: BLE001 - telemetry must never break trading
             log.debug("eval_snap failed w%s", wts)
-
-    def _twap_fv(self, C, n, k, s_adj, vol):
-        """P(closing TWAP >= strike) for the venue's post-2026-08-07 rule.
-
-        The closing average runs over [C-n, C). At decision time most of it is
-        ALREADY DETERMINED — only the seconds after our last oracle sample are
-        still random — so the uncertainty term is far smaller than the old
-        spot-close model's `vol*sqrt(tau)`:
-
-            TWAP_close ~ Normal( (known + u*S)/n ,  (S*vol/n) * sqrt(V) )
-            V = u^2*a + u(u+1)(2u+1)/6      (a = seconds until the average starts)
-
-        u = unknown seconds inside the average, a = 0 whenever the average has
-        already begun (always true at snipe time: u<=5 vs n>=30). At u=5, n=30
-        the sd is ~10x smaller than the old rule's — the same market move now
-        buys far more certainty, which is exactly why this must clear the
-        honesty gate on paper before it trades.
-        Returns (fv, u) or None when coverage is too thin to average honestly.
-        """
-        L = self.oracle.last_sample_s
-        known_sum, n_present, n_elapsed = self.oracle.twap_known(C, n, L + 1)
-        if n_elapsed > 0 and n_present / n_elapsed < self.cfg.oracle_twap_min_coverage:
-            self.no_data += 1
-            return None                      # gappy grid: not the venue's number
-        u = n - n_elapsed
-        if u <= 0:
-            self.no_data += 1
-            return None                      # window already closed for us
-        if n_present:                        # impute holes at the known mean
-            known_sum *= n_elapsed / n_present
-        a = max(0, (C - n) - (L + 1))        # average not started yet (not at snipe time)
-        mu = (known_sum + u * s_adj) / n
-        var = u * u * a + u * (u + 1) * (2 * u + 1) / 6.0
-        sd = (s_adj * vol / n) * math.sqrt(var)
-        if sd <= 0:
-            self.no_data += 1
-            return None
-        gap = mu - k
-        # resolution floor, damped by the projection's weight: only u/n of the
-        # closing average carries the spot feed's tick noise
-        if abs(gap) < (u / n) * self.cfg.snipe_min_ticks * self.cfg.spot_tick:
-            self.thin_gap += 1
-            return None
-        # sub-basis-point margins are below our own reconstruction error (one
-        # ETH window missed at 0.056bp in verification) — never call those
-        if abs(gap) / k < self.cfg.snipe_min_gap_bps * 1e-4:
-            self.thin_gap += 1
-            return None
-        self._last_gap_bp = gap / k * 1e4
-        return norm_cdf(gap / sd), u
 
     def _depth_event(self, wts, side, fv, pre, st, filled):
         """Deeper-book research tap: the ask ladder at signal time and after

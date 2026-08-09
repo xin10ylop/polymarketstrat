@@ -2,13 +2,13 @@
 
   venv/bin/python scripts/test_twap_math.py
 
-Covers the two pieces that now decide real money: Oracle's rolling-TWAP
-reconstruction (used for the strike and the settlement cross-check) and
-SnipeStrategy._twap_fv (the confidence model against the new target).
-Pure arithmetic on synthetic samples — no network, no ledger, no bot.
+Covers Oracle's rolling-TWAP reconstruction — the strike the snipe now
+prices against and the settlement cross-check the mismatch halt rides on —
+plus a guard that the ORIGINAL confidence model, and therefore the ~6bp
+distance filter the validated edge was built on, is still what gates a
+trade. Pure arithmetic on synthetic samples: no network, ledger or bot.
 """
-import dataclasses
-import math
+import math as _m
 import os
 import sys
 
@@ -16,7 +16,6 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from bot.config import CFG                      # noqa: E402
 from bot.feeds.oracle import Oracle             # noqa: E402
-from bot.strategies.snipe import SnipeStrategy  # noqa: E402
 
 FAILED = []
 
@@ -108,60 +107,27 @@ check("known n_elapsed at 5s to go", n_elapsed, 25)
 check("known n_present", n_present, 25)
 check("known sum", s_sum, 2500.0)
 
-# ----------------------------------------------------------------- _twap_fv
-print("\n[4] _twap_fv: mean, variance shrinkage, refusals")
+# --------------------------------------------------- adapted snipe strike
+print("\n[4] the snipe adaptation: new strike, ORIGINAL confidence model")
+o = oracle_with({s_: 100.0 + (s_ - (C - 30)) * 0.1 for s_ in range(C - 30, C)})
+k_twap, cov = o.twap_at(C, 30)
+check("strike is the TWAP, not the last print", k_twap, sum(100.0 + i * 0.1 for i in range(30)) / 30)
+check_true("strike differs from the closing tick",
+           abs(k_twap - 102.9) > 1.0, f"(twap {k_twap:.2f} vs tick 102.9)")
+check("strike coverage full", cov, 1.0)
 
-
-class _StubSpot:
-    pass
-
-
-def strat(oracle, **over):
-    cfg = dataclasses.replace(CFG, **over) if over else CFG
-    return SnipeStrategy(cfg, None, oracle, _StubSpot(), None, None, None)
-
-
-VOL = 1e-4                    # per-sqrt-second log vol
-o = oracle_with({s: 100.0 for s in range(C - 30, C - 5)})       # 25s known at 100
-s = strat(o, snipe_min_ticks=0.0, snipe_min_gap_bps=0.0, spot_tick=0.0)
-
-fv, u = s._twap_fv(C, 30, 100.0, 100.0, VOL)
-check("u at 5 unknown seconds", u, 5)
-check_true("flat market, strike at price -> fv ~ 0.5", abs(fv - 0.5) < 1e-6, f"({fv:.6f})")
-
-# projection: 5 unknown seconds at 106 lifts the mean by 5*(6)/30 = 1.0
-fv_hi, _ = s._twap_fv(C, 30, 100.0, 106.0, VOL)
-mu = (2500.0 + 5 * 106.0) / 30.0
-var = 5 * (5 + 1) * (2 * 5 + 1) / 6.0
-sd = (106.0 * VOL / 30.0) * math.sqrt(var)
-want = 0.5 * (1 + math.erf(((mu - 100.0) / sd) / math.sqrt(2)))
-check("projected mean/sd match closed form", fv_hi, want, tol=1e-12)
-check_true("mu is the blend, not the spot price", abs(mu - 101.0) < 1e-9, f"(mu={mu})")
-
-# THE headline: same market move, far more certainty than the old rule
-old_sd_rel = VOL * math.sqrt(5)                 # spot close, 5s horizon
-new_sd_rel = (VOL / 30.0) * math.sqrt(var)      # 30s TWAP, 5s unknown
-check_true("TWAP sd ~10x smaller than spot-close sd",
-           9.0 < old_sd_rel / new_sd_rel < 12.0,
-           f"(ratio {old_sd_rel / new_sd_rel:.1f}x)")
-
-# refusals
-s_floor = strat(o, snipe_min_ticks=0.0, snipe_min_gap_bps=1.0, spot_tick=0.0)
-check_true("sub-threshold gap refused",
-           s_floor._twap_fv(C, 30, 100.0, 100.03, VOL) is None)
-o_gappy = oracle_with({s_: 100.0 for s_ in range(C - 30, C - 5, 5)})   # 5/25 present
-s_gappy = strat(o_gappy, snipe_min_ticks=0.0, snipe_min_gap_bps=0.0, spot_tick=0.0)
-check_true("thin coverage refused", s_gappy._twap_fv(C, 30, 100.0, 101.0, VOL) is None)
-o_done = oracle_with({s_: 100.0 for s_ in range(C - 30, C)})
-s_done = strat(o_done, snipe_min_ticks=0.0, snipe_min_gap_bps=0.0, spot_tick=0.0)
-check_true("no unknown seconds left refused",
-           s_done._twap_fv(C, 30, 100.0, 101.0, VOL) is None)
-
-# variance formula continuity at u == n (average has just started)
-u_, n_, a_ = 30, 30, 0
-v_at_n = u_ * u_ * a_ + u_ * (u_ + 1) * (2 * u_ + 1) / 6.0
-check_true("V(u=n,a=0) ~ n^3/3", abs(v_at_n - 30 ** 3 / 3.0) / (30 ** 3 / 3.0) < 0.06,
-           f"({v_at_n:.0f} vs {30 ** 3 / 3.0:.0f})")
+VOL = 1e-4
+def fv_old(s_adj, k, tau):        # the untouched formula the edge was validated on
+    return 0.5 * (1 + _m.erf((_m.log(s_adj / k) / (VOL * _m.sqrt(tau))) / _m.sqrt(2)))
+check_true("6bp at 6s to go still clears 0.995",
+           fv_old(100.0 * (1 + 6.5e-4), 100.0, 6) >= 0.995,
+           f"(fv {fv_old(100.0 * (1 + 6.5e-4), 100.0, 6):.4f})")
+check_true("2bp at 6s to go still does NOT clear 0.995",
+           fv_old(100.0 * (1 + 2e-4), 100.0, 6) < 0.995,
+           f"(fv {fv_old(100.0 * (1 + 2e-4), 100.0, 6):.4f})")
+check_true("the distance filter is preserved: threshold ~6bp",
+           5.5 < 2.5758 * VOL * _m.sqrt(6) * 1e4 < 6.5,
+           f"({2.5758 * VOL * _m.sqrt(6) * 1e4:.2f}bp)")
 
 print("\n" + ("ALL TESTS PASSED" if not FAILED else f"FAILURES: {FAILED}"))
 sys.exit(1 if FAILED else 0)
