@@ -1190,3 +1190,42 @@ them in that order.
   outright paper-only artifact. But it is unexamined, it lands on the 81% of
   profit that came from cheap entries, and it must be settled before any
   claim about the record's validity. That audit is upstream of everything.
+
+- 2026-08-10 A LIVE HYPOTHESIS WITH THE OLD MECHANISM: FEED DIVERGENCE.
+  Owner pushed back on the "it's dead" conclusion. He was right that I had
+  stopped one step short. The third audit established WHAT the old edge was:
+  the book priced the exchange TAPE while Polymarket settled on CHAINLINK,
+  and at knife-edge margins those disagree. I treated the rule change as
+  deleting that discrepancy. It did not — it MOVED it. Settlement is now a
+  30s Chainlink TWAP; a participant estimating the outcome from spot (the
+  exact error this repo shipped and had to fix on 08-09, at a cost of
+  $85.89) is systematically wrong whenever spot and the TWAP diverge.
+  MEASURED, Aug 7-8, 574 windows per coin, no lookahead, Binance 1s as both
+  the spot view and the TWAP proxy. Divergence occurs in ~6% of windows
+  (~17/day/coin). When it does, the TWAP side wins:
+      BTC  Aug-7 82.4% (n=17)  Aug-8 64.7% (n=17)  pooled 73.5% (n=34)
+      ETH  Aug-7 92.0% (n=25)  Aug-8 78.9% (n=19)  pooled 86.4% (n=44)
+  Four of four day-asset cells above chance; ETH stronger and steadier.
+  WHY THIS ONE IS DIFFERENT FROM EVERYTHING ELSE TRIED THIS WEEK:
+  (1) It is a MECHANISM (two feeds, one book) rather than a claim that we
+      out-forecast the market.
+  (2) It INVERTS the liquidity problem. Every drought measured — winner-side
+      quotes at 13-27% near the close — was on the side the book agrees is
+      winning. In a divergence window the side we want is the one the book
+      thinks is LOSING, and that side is quoted 95-100% of the time
+      throughout. The trade wants exactly the inventory that is always there.
+  (3) It targets CHEAP entries, the price region that produced 81% of all
+      historical profit, instead of the 0.95+ region that produced -$61.50
+      on 15,814 shares.
+  (4) Its shape matches the old edge: buy at what the book calls 10-30%,
+      win 74-86%. The old cheap bucket won 49.9% against 30.6% implied.
+  THE DECISIVE UNKNOWN IS THE PRICE, and only the droplet's book recording
+  can answer it. bot/divergence_report.py measures it: for each divergence
+  window it looks up what the TWAP side actually cost, prices EV against the
+  win rate of the FULL divergence population (never the filled subset — that
+  error produced two retracted results this week), treats a failed fetch as
+  unknown rather than as an absent quote, and prints the 95% lower bound
+  beside every number. n is 34-44 per coin; four of the last five promising
+  results on this project died out of sample. This one gets the same
+  treatment: no action until the price is measured and the signal survives
+  days it has not seen.
