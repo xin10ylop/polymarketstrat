@@ -1,0 +1,21 @@
+[Unit]
+Description=Polymarket 1s Chainlink grid recorder (btc) - feeds twap_verify/timing_scan/edge_report
+After=network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=600
+StartLimitBurst=20
+
+[Service]
+Type=simple
+# measurement only, never trades. Lowest CPU share on the box.
+CPUWeight=50
+WorkingDirectory=/opt/polymarketstrat
+Environment=COIN=btc
+Environment=TWAP_DIR=/opt/polymarketstrat/bot/data/twapcal
+ExecStart=/opt/polymarketstrat/venv/bin/python -m bot.twap_record
+Restart=always
+RestartSec=10
+MemoryMax=120M
+
+[Install]
+WantedBy=multi-user.target
