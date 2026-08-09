@@ -109,20 +109,32 @@ class SnipeStrategy:
         if tau <= 0:
             return False
         s_adj = s_lag * basis
+        # Compare LIKE WITH LIKE. Since 2026-08-07 the window settles on the
+        # closing TWAP, and at decision time most of that average is already
+        # history — so the spot price is NOT an estimate of what settles.
+        # Using it overstates the gap by up to n/u (5x at 6s left in a 30s
+        # average) exactly when the price has just moved, which is the setup
+        # we trade. Measured cost of getting this wrong: 08-09, 250 shares at
+        # avg 0.33 on a side the book priced at 33%, fv>=0.995, total loss.
+        # The UNCERTAINTY term is untouched: vol*sqrt(tau) prices the closing
+        # tick, which is wider than the average's, keeping the original
+        # ~6bp-style distance filter the validated edge was built on.
+        est = s_adj
+        if n_twap:
+            known_sum, n_present, n_elapsed = self.oracle.twap_known(
+                wts + T, n_twap, self.oracle.last_sample_s + 1)
+            if n_elapsed > 0:
+                if n_present / n_elapsed < self.cfg.oracle_twap_min_coverage:
+                    self.no_data += 1
+                    return False
+                known_sum *= n_elapsed / n_present      # impute holes at the mean
+                est = (known_sum + (n_twap - n_elapsed) * s_adj) / n_twap
         # input-resolution floor (audit F3): below N spot ticks of distance,
         # fv is quantization noise dressed as confidence (binds on SOL only)
-        if abs(math.log(s_adj / k)) < self.cfg.snipe_min_ticks * self.cfg.spot_tick / s_adj:
+        if abs(math.log(est / k)) < self.cfg.snipe_min_ticks * self.cfg.spot_tick / est:
             return False
-        # The 2026-08-07 rule change moved the STRIKE (k is now a rolling TWAP)
-        # and the settled quantity (a 30s average, not the closing tick). The
-        # confidence model is deliberately NOT re-derived for that: vol*sqrt(tau)
-        # is the uncertainty of the closing tick, which is ~10x wider than the
-        # average's, so this understates how sure we are. That conservatism is
-        # the point — it keeps the ~6bp distance filter that the validated edge
-        # was built on. Pricing the average exactly makes fv pin at 1.0000 on
-        # 99.5% of ticks (measured 08-09), which is not a gate at all.
-        self._last_gap_bp = math.log(s_adj / k) * 1e4
-        fv = norm_cdf(math.log(s_adj / k)
+        self._last_gap_bp = math.log(est / k) * 1e4
+        fv = norm_cdf(math.log(est / k)
                       / (max(vol, self.cfg.snipe_vol_floor) * math.sqrt(tau)))
         self.evals += 1
         self.last_fv = fv

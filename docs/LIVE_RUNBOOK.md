@@ -865,3 +865,33 @@ them in that order.
   above should we ever want it, but it does not ship. LESSON: when a venue
   changes a definition, change what READS the definition; re-deriving the
   model on top of it is a second, unvalidated change riding on the first.
+
+- 2026-08-09 FIRST FILL AFTER THE MIGRATION LOST EVERYTHING — and found a
+  real bug in my own adaptation. One window, 22 fill rows, 250 shares at avg
+  0.33, win rate 0%, -$85.89. Our fv said >=0.995 on a side the book priced
+  at 0.33. The book was right. CAUSE (not bad luck): I fixed the strike to a
+  TWAP but left the ESTIMATE as raw spot — comparing a spot price against an
+  average. Since the window settles on the closing TWAP and most of that
+  average is already history at decision time, a late spot move only moves
+  what settles by u/n of itself: at 6s left in a 30s average, a +30bp spot
+  jump is a +6bp move in the settled quantity. Using spot overstates the gap
+  5x, and it does so EXACTLY in the setup the strategy trades (a fresh move
+  the book has not repriced). My earlier claim that keeping vol*sqrt(tau)
+  made the model "conservative" was only half right: the UNCERTAINTY was
+  conservative, the CENTRE was biased, and the centre is what picks the side.
+  FIX: est = (known + u*spot)/n, compared against the TWAP strike; the
+  uncertainty term stays the original vol*sqrt(tau). Still no re-derivation —
+  the change is that we now estimate the thing that settles. Regression test
+  in scripts/test_twap_math.py section [5] pins the exact failure shape.
+  EXPECT FEWER TRADES: to move a 30s average 6bp with 6s left the spot must
+  move ~30bp, which is rare — so at T-6s this strategy is now nearly dead by
+  construction, independent of liquidity. That is the honest read of the
+  arithmetic, and it reframes the fill drought: the book being empty at T-6s
+  (no_ask 10/22, REFUSED-BUT-PRICED 0/22 over 24h) is the market agreeing
+  with that arithmetic, not a separate problem. WHERE THE EDGE MAY HAVE GONE:
+  earlier. At lead L the spot carries L/n of the estimate, so before the
+  averaging window opens (L >= n) the projected average IS the spot and the
+  old geometry returns — at the cost of more unwritten window. bot/timing_scan.py
+  scans the recorded grid against official outcomes across lead times to find
+  where accuracy and gap size coexist. Signal-only: it says nothing about
+  whether an ask was resting, which needs a separate book recorder.

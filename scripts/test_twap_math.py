@@ -129,5 +129,27 @@ check_true("the distance filter is preserved: threshold ~6bp",
            5.5 < 2.5758 * VOL * _m.sqrt(6) * 1e4 < 6.5,
            f"({2.5758 * VOL * _m.sqrt(6) * 1e4:.2f}bp)")
 
+
+# ------------------------------------------------- the estimator must match
+# what settles: a late spot jump moves the closing AVERAGE by only u/n of it.
+print("\n[5] estimator compares like with like (the 08-09 loss)")
+N = 30
+K = 100.0
+known_mean, elapsed = 100.0, 24          # 24s of the average banked at strike
+u = N - elapsed
+S = 100.0 * (1 + 30e-4)                  # spot jumps +30bp with 6s to go
+est = (known_mean * elapsed + u * S) / N
+check("projected average moves only u/n of the jump",
+      round((est - K) / K * 1e4, 3), round(30.0 * u / N, 3))
+check_true("raw spot overstates the gap 5x",
+           abs((S - K) / (est - K) - N / u) < 1e-9, f"({(S-K)/(est-K):.1f}x)")
+VOL2 = 1e-4
+fv_spot = 0.5 * (1 + _m.erf((_m.log(S / K) / (VOL2 * _m.sqrt(6))) / _m.sqrt(2)))
+fv_est = 0.5 * (1 + _m.erf((_m.log(est / K) / (VOL2 * _m.sqrt(6))) / _m.sqrt(2)))
+check_true("raw spot would fire", fv_spot >= 0.995, f"(fv {fv_spot:.6f})")
+check_true("projected average declines", fv_est < 0.995, f"(fv {fv_est:.6f})")
+check_true("before the averaging window opens they agree",
+           abs(((0.0 + N * S) / N) - S) < 1e-9)
+
 print("\n" + ("ALL TESTS PASSED" if not FAILED else f"FAILURES: {FAILED}"))
 sys.exit(1 if FAILED else 0)
