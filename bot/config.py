@@ -213,6 +213,21 @@ class Config:
     xwin_max_chase: float = _env("XWIN_MAX_CHASE", 0.02, float)
     oracle_max_staleness_s: float = 5.0    # oracle feed silence -> degraded, no trading
     feed_max_silence_s: float = 10.0       # spot feed silence pauses the snipe
+    # --- resolution rule (CHANGED BY THE VENUE 2026-08-07 00:00 UTC) ---
+    # 5m/15m now settle on a rolling Chainlink TWAP: "TWAP at close >= TWAP
+    # at open". Length scales with the window (30s / 60s). 0 = the old
+    # spot-vs-spot rule, which still governs the 1h family (Binance/UMA).
+    oracle_twap_s: int = _env(
+        "ORACLE_TWAP_S",
+        {"5m": 30, "15m": 60}.get(_env("FAMILY", "5m"), 0), int)
+    # a TWAP averaged over a gappy grid is a different number: refuse below
+    # this share of the seconds (the recorder saw 89-93% density on a box
+    # that was ALSO running seven bots; the bot's own feed backfills)
+    oracle_twap_min_coverage: float = _env("ORACLE_TWAP_MIN_COVERAGE", 0.9, float)
+    # TWAP margins are far smaller than spot margins (a confident call now
+    # needs ~0.5bp, not ~10bp). Verification missed one ETH window at
+    # 0.056bp, so refuse to call anything inside our own reconstruction error.
+    snipe_min_gap_bps: float = _env("SNIPE_MIN_GAP_BPS", 0.1, float)
 
     # --- ops ---
     data_dir: str = _env("BOT_DATA_DIR", os.path.join(os.path.dirname(__file__), "data"))

@@ -45,7 +45,22 @@ async def reconciler(cfg, clob, ledger, toll, oracle):
                     ledger.event("no_outcome", mk.slug)
                 continue
             oracle_winner = toll.oracle_calls.get(wts)
-            if oracle_winner is None:
+            if oracle_winner is None and cfg.oracle_twap_s:
+                # venue rule since 2026-08-07: rolling TWAP at BOTH ends.
+                # twap_winner already returns None on thin coverage or when
+                # the two boundary conventions disagree (an uncallable tie).
+                n = cfg.oracle_twap_s
+                C = wts + cfg.window_secs
+                oracle_winner = oracle.twap_winner(
+                    wts, C, n, cfg.oracle_twap_min_coverage)
+                t_open, _ = oracle.twap_at(wts, n)
+                t_close, _ = oracle.twap_at(C, n)
+                if (oracle_winner is not None and t_open and t_close
+                        and abs(t_close - t_open) / t_open < cfg.oracle_tie_bps * 1e-4):
+                    ledger.event("near_tie",
+                                 f"w{wts} twap_open={t_open} twap_close={t_close}")
+                    oracle_winner = None
+            elif oracle_winner is None:
                 k_open = oracle.price_at(wts, exact=True, tolerance=2)
                 k_close = oracle.price_at(wts + cfg.window_secs, exact=True)
                 if k_open is not None and k_close is not None:

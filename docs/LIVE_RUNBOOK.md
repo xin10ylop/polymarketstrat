@@ -794,3 +794,50 @@ them in that order.
   residue IS the Binance-vs-Chainlink basis and is exactly what should vanish
   on the real grid. If it does not vanish, the boundary convention or the
   weighting is wrong and must be re-derived BEFORE any oracle change.
+
+- 2026-08-09 TWAP MIGRATION SHIPPED (the fix for the 08-07 rule change).
+  VERIFIED FIRST, then coded: bot/twap_verify.py scored candidate rules
+  against official outcomes on a 13h recording of the live 1s Chainlink grid
+  — BTC 5m 56/56 = 100%, BTC 15m 20/20 = 100%, ETH 5m 62/63 = 98.4% (the one
+  miss at a 0.056bp margin, i.e. inside our own reconstruction error), old
+  spot rule 89.6/93.6/93.2%. Gate was 99%: BTC PASS both families. The two
+  boundary conventions ([t-N,t) and (t-N,t]) BOTH score 100% and cannot be
+  distinguished — they differ only when one boundary sample moves the mean
+  across the strike, so the code computes both and refuses to call the
+  window when they disagree. WHAT SHIPPED: (1) Oracle.twap_at / twap_winner
+  / twap_known reconstruct the rolling TWAP from the 1s grid we already
+  consume (no TWAP topic exists on the live-data socket — probe swept 15
+  topic names, only crypto_prices_chainlink and crypto_prices answer).
+  (2) config oracle_twap_s auto-selects 30s (5m) / 60s (15m) / 0 (1h family,
+  which still settles on Binance via UMA and MUST stay on the old path),
+  plus oracle_twap_min_coverage 0.9 — a TWAP over a gappy grid is a
+  different number, so refuse rather than impute silently. (3) The
+  reconciler cross-check now judges the venue's actual rule, so the mismatch
+  tripwire means something again. (4) snipe strike = TWAP at open, and a new
+  fv model: the closing average is PARTLY HISTORY at decision time, so only
+  the seconds after our last oracle sample are random —
+  TWAP_close ~ N( (known + u*S)/n , (S*vol/n)*sqrt(u^2*a + u(u+1)(2u+1)/6) ).
+  At u=5, n=30 that sd is ~9x smaller than the old vol*sqrt(tau); unit-tested
+  in scripts/test_twap_math.py (22 assertions, closed-form cross-check).
+  WHAT THIS MEANS ECONOMICALLY — UNMEASURED, WATCH IT: a confident call now
+  needs ~0.5bp of edge instead of ~10bp, so fv will clear 0.995 far more
+  often and the bot will fire much more, at higher ask prices — straight
+  into the px>=0.95 bucket the loss audit showed is structurally thin
+  (breakeven ~97%, observed 95.2%). Two guards ship with it:
+  snipe_min_gap_bps (0.1bp, below our reconstruction error) and the existing
+  tick floor, damped by u/n. Neither is tuned — paper is the referee, and
+  the first day's fill count is the number to look at. STICKY HALTS: the
+  08-07/08-08 mismatches re-trip on every restart by design;
+  scripts/clear_rule_change_mismatches.py acknowledges ONLY windows at or
+  after the 1786060800 cutover, refuses pre-cutover rows (those are real
+  bugs), keeps winner/oracle_winner intact and writes a mismatch_cleared
+  audit event. RESTART ORDER (matters — clearing halts while old code runs
+  would resume trading on the broken signal): stop services -> git pull ->
+  run the unit tests -> dry-run the clear -> apply -> start btc5m ALONE.
+  XWIN STAYS DOWN and is NOT repaired by this: its floor needs both legs to
+  settle on one closing price, but the 5m leg now settles on a 30s TWAP and
+  the 15m leg on a 60s TWAP, so the shared-close premise itself is gone. Its
+  strikes are also still spot-based (ordering flips on 6.3% of closes). A
+  repair means re-deriving the floor with a minimum strike-gap that exceeds
+  the plausible 30s/60s spread (|spread| >= |gap| on 3.2% of Aug-7 closes) —
+  a design, not a proven edge. Do not restart it on a hunch.

@@ -121,6 +121,60 @@ class Oracle:
             return None
         return None
 
+    # ---- rolling TWAP (2026-08-07 resolution-rule change) -------------
+    # Polymarket now resolves the 5m/15m families on Chainlink's rolling TWAP
+    # streams (30s for 5m windows, 60s for 15m): "TWAP at close >= TWAP at
+    # open". No TWAP topic exists on the live-data socket, so we reconstruct
+    # it from the same 1s Chainlink grid this feed already consumes —
+    # verified against official outcomes at 100% on 76 BTC windows across
+    # both families (bot/twap_verify.py, gate 99%).
+    def twap_at(self, unix_second, n, edge="left"):
+        """Rolling n-second TWAP as of `unix_second`.
+
+        edge="left"  -> mean over [t-n, t)   |  edge="right" -> mean over (t-n, t]
+        Both scored 100%; they can only differ when a single boundary sample
+        moves the mean across the strike, i.e. in windows too close to call.
+        Returns (value, coverage) where coverage = samples present / n.
+        """
+        t = int(unix_second)
+        lo, hi = (t - n, t) if edge == "left" else (t - n + 1, t + 1)
+        vals = [self.samples[s] for s in range(lo, hi) if s in self.samples]
+        if not vals:
+            return None, 0.0
+        return sum(vals) / len(vals), len(vals) / float(n)
+
+    def twap_winner(self, open_s, close_s, n, min_coverage=0.9):
+        """The official rule's winner, or None when it is not callable.
+
+        None means one of: thin sample coverage, or the two boundary
+        conventions disagree — a sub-basis-point tie we must not adjudicate.
+        Callers treat None as 'no opinion', never as a mismatch.
+        """
+        calls = []
+        for edge in ("left", "right"):
+            c, cov_c = self.twap_at(close_s, n, edge)
+            o, cov_o = self.twap_at(open_s, n, edge)
+            if c is None or o is None or min(cov_c, cov_o) < min_coverage:
+                return None
+            calls.append("up" if c >= o else "down")
+        return calls[0] if calls[0] == calls[1] else None
+
+    def twap_known(self, close_s, n, upto_s):
+        """The part of the closing TWAP window that is ALREADY DETERMINED at
+        `upto_s`: (sum, n_seconds_present, n_seconds_elapsed).
+
+        This is what makes the new rule easier to call than the old one: at
+        5s to go, 25 of a 30s average is already history. Missing seconds
+        inside the elapsed range are reported so the caller can refuse on
+        thin coverage rather than impute silently.
+        """
+        lo = int(close_s) - n
+        hi = min(int(upto_s), int(close_s))       # exclusive
+        if hi <= lo:
+            return 0.0, 0, 0
+        vals = [self.samples[s] for s in range(lo, hi) if s in self.samples]
+        return sum(vals), len(vals), hi - lo
+
     def staleness(self):
         return time.time() - self.last_rx if self.last_rx else float("inf")
 
