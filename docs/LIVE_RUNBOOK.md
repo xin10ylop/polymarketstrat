@@ -895,3 +895,31 @@ them in that order.
   scans the recorded grid against official outcomes across lead times to find
   where accuracy and gap size coexist. Signal-only: it says nothing about
   whether an ask was resting, which needs a separate book recorder.
+
+- 2026-08-09 THE EDGE MOVED EARLIER IN THE WINDOW (bot/timing_scan.py, 26h
+  grid, 298 BTC 5m windows vs official outcomes, no lookahead — each lead
+  uses only samples at or before its own decision instant). Direction
+  accuracy of the projected closing average, restricted to |gap| > 2bp:
+  100% at leads 3-30s (67 windows at L=30), 98.4% at 45s and 60s (61-63
+  windows), 94.9% at 90s, 94.1% at 120s. Unrestricted accuracy decays as
+  expected (99.6% at L=6 -> 69% at L=120), so the GAP FILTER is doing the
+  work, not the lead time. ~23% of windows clear 2bp at any given lead, i.e.
+  ~55-60 signals/day. THE CAVEAT THAT MATTERS: realized BTC 1s vol over the
+  measured period was 0.359bp/sqrt(s) (1.05%/day — a calm regime). A
+  driftless random walk at that vol predicts only 81.1% accuracy for a 2bp
+  gap at L=60 and 71.2% at L=120; we observed 98.4% and 94.1%. Observed
+  beats theory by a wide margin, which most likely means vol clustering (the
+  median window is far quieter than the unconditional vol implies) rather
+  than a new law — so do NOT hardcode a 2bp threshold. The fv machinery
+  already divides by vol*sqrt(tau) and adapts by construction; that is the
+  right harvester. Expect this edge to shrink hard in a 3%/day regime.
+  WHAT IS STILL UNKNOWN — and it is the whole question: whether anyone is
+  OFFERING the winning side at those leads and at what price. The T-6s book
+  is empty (no_ask 10/22, REFUSED-BUT-PRICED 0/22 over 24h) precisely
+  because the answer is locked by then; at T-30..T-120 the outcome is still
+  genuinely uncertain to the market, so offers should exist — but "should"
+  is not evidence. bot/book_record.py samples both tokens' books at leads
+  120/90/60/45/30/20/10/6/3s via the CLOB REST endpoint into
+  bot/data/bookcal. Only once that is joined to the grid and outcomes can
+  the opportunity be priced. DO NOT move snipe_eval_from_s on the strength
+  of accuracy alone: a 98% call bought at 0.99 is a losing trade.
