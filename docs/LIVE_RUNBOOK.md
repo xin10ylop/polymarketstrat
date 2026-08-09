@@ -951,3 +951,34 @@ them in that order.
   faster than the ask does, an edge could survive in the tail), (b) days
   rather than hours, (c) a livelier vol regime, (d) eth/sol. Nothing about
   this changes the oracle migration, which remains correct and verified.
+
+- 2026-08-09 STRICT-THRESHOLD IDEA KILLED OUT OF SAMPLE; MAKER ROUTE IS THE
+  LIVE QUESTION. Owner pushed back on the premature "no edge" call, rightly:
+  my accuracy test used a FIXED 2bp gap while the live gate is vol-scaled
+  (fv >= 0.995), so it mixed trades the bot would take with ones it would
+  refuse. Re-ran with the real vol-scaled gate on Aug 7 (288 windows, 1s
+  Binance proxy, rolling 300s vol, no lookahead): it helps but not enough —
+  L=90 92.4%->95.3%, L=60 94.5%->96.1%, L=45 95.2%->97.6%, all still under
+  the break-even the book demands. Then swept stricter thresholds and four
+  cells appeared to BEAT the market (L=120 fv>=0.9999 100% n=12 +3.08c;
+  L=90 fv>=0.99999 100% n=14 +2.33c; L=30 fv>=0.9999 100% n=105 +0.93c).
+  That is 20 lead x threshold combinations tested, so I ran Aug 8 as pure
+  out-of-sample. THEY COLLAPSED: L=120 100%->80.0% (n=5), L=90 100%->85.7%
+  (n=7), L=30 100%->95.8% (n=120, -3.24c). In-sample artifacts, exactly what
+  multiple testing produces. Do not resurrect them without OOS.
+  THE ONE SURVIVOR: L=45s, fv>=0.9999 — 98.6% on n=74 in-sample AND 98.6%
+  on n=74 out-of-sample. Identical across two days, decent sample. As a
+  TAKER that is EV -0.00c/share: exactly, precisely break-even against an
+  0.985 ask plus fee. The forecast is not the problem at 45s; paying the
+  spread is 100% of the problem. MAKER ARITHMETIC (maker fee = 0, verified
+  live): resting at 0.97 -> +1.60c/sh ($4.00 per 250), at 0.96 -> +2.60c/sh
+  ($6.50), at 0.95 -> +3.60c/sh ($9.00). ~74 signals/day on BTC 5m alone.
+  UNKNOWN AND DECISIVE: fill probability on a resting bid at those prices —
+  who crosses to us, how often, and whether the flow that does is adversely
+  informed. bot/book_record.py already stores bid/bid_sz and now runs on
+  btc 5m, eth 5m and btc 15m, so the data is accruing. NOTE the venue's own
+  history here: the repo's toll strategy was maker-side and was never
+  live-qualified because queue position was unproven — same open question,
+  and its notes should be mined before building anything.
+  PROCESS NOTE: two Fable 5 review agents were launched at the owner's
+  request and both died on out-of-usage-credits before returning findings.
