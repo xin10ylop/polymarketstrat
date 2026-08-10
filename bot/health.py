@@ -81,7 +81,8 @@ def main():
                 # will until it trades — that is idle, not broken. Only a
                 # RECORDER (one carrying a rate expectation) is dead here.
                 v, lvl = ("DEAD", 2) if expect else ("idle", 0)
-                print(f"{label:>34} {n or 0:>9} {'never':>12} {0:>8} {v:>8}")
+                print(f"{label:>34} {n or 0:>9} {'never':>12} {0:>8} "
+                      f"{'-':>8} {v:>8}")
                 worst = max(worst, lvl)
                 continue
             age = now - last
