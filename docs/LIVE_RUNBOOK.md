@@ -1806,3 +1806,29 @@ them in that order.
   had zero. That is the measurement this whole line of work has been waiting
   on and it could not be back-filled. bot/price_curve.py now has real book
   data at the open for the first time.
+
+- 2026-08-10 bot/health.py — THE CHECK THAT SHOULD HAVE EXISTED BEFORE
+  EITHER RECORDER BUG. Owner's complaint is correct: twice in two days I
+  shipped a broken recorder, told him to run it and wait hours, and the
+  breakage was only found when a downstream report looked thin. The waiting
+  was wasted both times because the damage was already done before the
+  clock started.
+  systemctl cannot catch this. Both dead recorders reported `active` — one
+  was throwing on every insert, the other had cached a failed lookup. A
+  process can be perfectly alive and writing nothing. The only honest test
+  is whether ROWS ARE ARRIVING.
+  health.py checks every recorder and ledger for row count, age of the last
+  write, and rows in the last hour against a rough expected rate, and exits
+  non-zero if anything is wrong. Verified against fixtures reproducing BOTH
+  real failures: a recorder silent for 3h reads DEAD, and one writing 4 rows
+  where 150/h is expected reads THIN — which is exactly the shape the pair
+  recorder made while logging one row in 9.5 hours.
+  STANDING RULE, now enforceable in one second rather than by waiting:
+  after ANY recorder or schema change, run bot.health. Before reporting a
+  result from any table, run bot.health. `active` is not evidence.
+  AND A RULE FOR ME: verify the code path against the live venues HERE
+  before handing over a command. The pair recorder's sampling path was run
+  end to end this way afterwards — three real samples, both books, sane
+  prices (pm_up 0.79 vs kalshi yes 0.77-0.78, package 1.014 after fees, no
+  gap at that instant). That check took one minute and would have caught
+  the bug before it cost nine hours.
