@@ -38,6 +38,7 @@ LEADS = sorted((int(x) for x in os.environ.get(
 PREOPEN = sorted((int(x) for x in os.environ.get("PREOPEN", "20,10,5,3")
                   .split(",") if x.strip()), reverse=True)
 OUT_DIR = os.environ.get("BOOK_DIR", "bot/data/bookcal")
+SWEEP = float(os.environ.get("SWEEP", "0.05"))   # depth window above the touch
 HDRS = {"User-Agent": "Mozilla/5.0"}
 
 
@@ -47,6 +48,7 @@ def db_open():
     db.execute("""CREATE TABLE IF NOT EXISTS book(
         wts INTEGER, lead INTEGER, side TEXT, ask REAL, ask_sz REAL,
         bid REAL, bid_sz REAL, ts REAL, err INTEGER DEFAULT 0,
+        ask_cum REAL,
         PRIMARY KEY(wts, lead, side))""")
     # MIGRATE. CREATE TABLE IF NOT EXISTS is a no-op on a database that
     # already exists, so adding `err` to the schema above did nothing to the
@@ -57,6 +59,9 @@ def db_open():
     if "err" not in cols:
         db.execute("ALTER TABLE book ADD COLUMN err INTEGER DEFAULT 0")
         print("migrated: added err column to an existing book table", flush=True)
+    if "ask_cum" not in cols:
+        db.execute("ALTER TABLE book ADD COLUMN ask_cum REAL")
+        print("migrated: added ask_cum (depth, not just the touch)", flush=True)
     db.commit()
     return db
 
@@ -83,11 +88,18 @@ def tokens(wts):
 
 
 def top(token):
-    """(best_ask, ask_size, best_bid, bid_size) or None if the FETCH failed.
+    """(ask, ask_sz, bid, bid_sz, ask_cum) or None if the FETCH failed.
 
     None is a measurement failure, never evidence that the book was empty —
     an empty book returns a valid response with no levels, which yields
-    (None, None, None, None) instead.
+    all-None instead.
+
+    ask_cum is the size available at or below best_ask + SWEEP, i.e. what a
+    marketable order could actually take. RECORDING ONLY THE TOUCH WAS AN
+    ERROR THAT COST A CONCLUSION: one pre-open sample showed 14 shares at
+    the best ask and I reported that liquidity collapses into the open. The
+    full ladder at the same moment held 1,889 shares within five cents.
+    The touch is not the tradeable size and never was.
     """
     for attempt in (0, 1):
         try:
@@ -103,7 +115,9 @@ def top(token):
     bids = [(float(x["price"]), float(x["size"])) for x in (b.get("bids") or [])]
     a = min(asks) if asks else (None, None)
     d = max(bids) if bids else (None, None)
-    return a[0], a[1], d[0], d[1]
+    cum = (sum(sz for px, sz in asks if px <= a[0] + SWEEP + 1e-9)
+           if asks else None)
+    return a[0], a[1], d[0], d[1], cum
 
 
 def main():
@@ -137,11 +151,12 @@ def main():
                 for side, tok in (("up", nxt_toks[0]), ("down", nxt_toks[1])):
                     t = top(tok)
                     err = 1 if t is None else 0
-                    t = t or (None, None, None, None)
+                    t = t or (None, None, None, None, None)
                     db.execute(
                         "INSERT OR REPLACE INTO book(wts,lead,side,ask,ask_sz,"
-                        "bid,bid_sz,ts,err) VALUES(?,?,?,?,?,?,?,?,?)",
-                        (C, key, side, t[0], t[1], t[2], t[3], time.time(), err))
+                        "bid,bid_sz,ts,err,ask_cum) VALUES(?,?,?,?,?,?,?,?,?,?)",
+                        (C, key, side, t[0], t[1], t[2], t[3], time.time(),
+                         err, t[4]))
                 db.commit()
         if toks and None not in toks:
             left = C - now
@@ -153,13 +168,14 @@ def main():
                 for side, tok in (("up", toks[0]), ("down", toks[1])):
                     t = top(tok)
                     err = 1 if t is None else 0
-                    t = t or (None, None, None, None)
+                    t = t or (None, None, None, None, None)
                     # named columns, not positional: a positional insert is
                     # what coupled this writer to the exact column count
                     db.execute(
                         "INSERT OR REPLACE INTO book(wts,lead,side,ask,ask_sz,"
-                        "bid,bid_sz,ts,err) VALUES(?,?,?,?,?,?,?,?,?)",
-                        (wts, L, side, t[0], t[1], t[2], t[3], time.time(), err))
+                        "bid,bid_sz,ts,err,ask_cum) VALUES(?,?,?,?,?,?,?,?,?,?)",
+                        (wts, L, side, t[0], t[1], t[2], t[3], time.time(),
+                         err, t[4]))
                 db.commit()
                 if L == LEADS[0]:
                     n = db.execute("SELECT COUNT(*) FROM book").fetchone()[0]

@@ -2008,3 +2008,33 @@ them in that order.
   signal, which is why this is a separate tool rather than another lead in
   that table. Verified against a fixture with a known tilt and a
   deliberately flat book: reports lean +0.00c and recovers the right side.
+
+- 2026-08-10 RETRACTED WITHIN THE HOUR: "LIQUIDITY VANISHES INTO THE OPEN"
+  IS FALSE. Owner challenged the 14-share figure. He was right to. top()
+  records only the BEST level, and I read one window's touch size as the
+  tradeable size. The full ask ladder, sampled live across a real open:
+      T-30  up  0.51x206 0.52x315 0.53x560 0.54x526 0.55x998  -> 2605 <=0.55
+      T-20  up  0.51x168 0.52x329 0.53x580 0.54x536 0.55x1008 -> 2621
+      T-10  up  0.52x193 0.53x445 0.54x352 0.55x714           -> 1703
+      T-5   up  0.52x194 0.53x449 0.54x324 0.55x692           -> 1658
+      T-3   up  0.52x425 0.53x449 0.54x324 0.55x692           -> 1889
+      T-1   up  0.52x415 0.53x439 0.54x324 0.55x692           -> 1869
+  Depth barely moves from T-30 to T-1, on BOTH sides (down held 3642 ->
+  2586). MAKERS DO NOT PULL. There are ~1,900-3,300 shares inside five
+  cents at the entry moment, not fourteen. The edge-versus-size tradeoff I
+  described does not exist, and T-3 — the lead with 99% sign accuracy — is
+  also fully liquid. That is the strategy's best case, not its constraint.
+  THE INSTRUMENT CAUSED THE ERROR, so the instrument is fixed: book_record
+  now stores ask_cum, the size at or below best_ask + SWEEP (default 5c),
+  which is what a marketable order actually takes. Migration verified on
+  the live 9-column shape — adds the column, keeps old rows, accepts the
+  new insert. price_curve gains load_book_depth() and preopen_report uses
+  it, so SIZE now means executable depth everywhere.
+  ALSO CONFIRMED, and it corrects an earlier claim of mine: the snap is at
+  T+5, not T+2. That window sat at 0.51/0.50 at T+2 and moved to 0.47/0.55
+  by T+5 and 0.37/0.64 by T+10 — an 18c move, so a +5c limit rests well
+  inside it.
+  AND A CLEAN NEGATIVE WORTH KEEPING: that window's tilt at T-3 was
+  +0.07bp — the signal said UP, DOWN won. But 0.07bp is noise by
+  construction; TILT_MIN=1 refuses it. It is a demonstration of why the
+  gate exists, not evidence against the signal.

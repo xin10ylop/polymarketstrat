@@ -76,6 +76,21 @@ def load_book():
     return {(w, L, s): (a, z, e) for w, L, s, a, z, e in db.execute(q)}
 
 
+def load_book_depth():
+    """Same as load_book but the third field is EXECUTABLE DEPTH (ask_cum)
+    rather than the size at the touch, falling back to the touch on rows
+    recorded before that column existed."""
+    path = os.path.join(BOOK_DIR, f"{COIN}_{FAMILY}_book.db")
+    if not os.path.exists(path):
+        raise SystemExit(f"no book recording at {path} — run bot.book_record")
+    db = sqlite3.connect(path)
+    cols = {r[1] for r in db.execute("PRAGMA table_info(book)")}
+    e = "err" if "err" in cols else "0"
+    c = "COALESCE(ask_cum, ask_sz)" if "ask_cum" in cols else "ask_sz"
+    return {(w, L, s): (a, z, x) for w, L, s, a, z, x in db.execute(
+        f"SELECT wts, lead, side, ask, {c}, {e} FROM book")}
+
+
 def main():
     g = load_grid()
     book = load_book()

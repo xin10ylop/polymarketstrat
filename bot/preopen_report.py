@@ -20,10 +20,13 @@ FOUR THINGS DECIDE IT, and each has its own column:
   LEAN   the ask on the side we pick minus the ask on the other side. If
          the book already leans our way pre-open, the market makers have
          done the same arithmetic and the edge shrinks by the lean.
-  SIZE   shares at the touch on our side. The first window ever sampled
-         showed 160 shares at T-20 collapsing to 14 by T-3 — makers pull
-         exactly when the signal sharpens. Edge per share means nothing if
-         the size is four shares.
+  SIZE   EXECUTABLE depth on our side — everything within 5c of the touch,
+         which is what a marketable order actually takes. Recording only
+         the touch produced a false alarm: one sample showed 14 shares at
+         the best ask and I concluded liquidity collapses into the open.
+         The full ladder at that instant held 1,889 shares inside five
+         cents, and depth from T-30 to T-3 barely moved. Makers do not
+         pull. The touch is not the tradeable size.
   SNAP   where our side trades at T+2/T+15. A +5c limit only fills if the
          snap clears it.
   WIN    whether our side actually settles the winner, which is what
@@ -39,7 +42,7 @@ import urllib.request
 from concurrent.futures import ThreadPoolExecutor
 
 from bot.twap_verify import COIN, FAMILY, HDRS, NSEC, WINDOW, load_grid, official
-from bot.price_curve import load_book
+from bot.price_curve import load_book_depth as load_book
 
 PRE = [int(x) for x in os.environ.get("PRE", "20,10,5,3").split(",")]
 POST = [int(x) for x in os.environ.get("POST", "2,15,30").split(",")]
@@ -142,8 +145,9 @@ def main():
     print("\nLEAN is the whole question. Positive means the book already")
     print("charges more for the side we want — the makers ran the same")
     print("arithmetic and the edge shrinks by exactly that much.")
-    print("SIZE is the median shares at the touch on our side. A 6c edge on")
-    print("8 shares is 48 cents a window; the same edge on 200 is $12.")
+    print("SIZE is the median EXECUTABLE depth within 5c of the touch, not")
+    print("the touch itself — the touch understated it by ~100x in the one")
+    print("window that made me call liquidity a problem.")
     print(f"A +{100*EXIT_C:.0f}c limit fills only if the T+2 or T+15 column")
     print("clears entry + that much. If it does not, the win% column is what")
     print("you are actually holding.")
