@@ -248,8 +248,7 @@ def main():
         # EXIT: a resting sell fills when someone BUYS our side at >= target
         buys = [(t, p, z) for (t, s, p, z) in pr if t >= 0 and s == "BUY"]
         rows.append(dict(w=w, tilt=tilt, pick=pick, entry=entry, buys=buys,
-                         won=(winner == pick),
-                         peak=max((p for _, p, _ in buys), default=None)))
+                         won=(winner == pick)))
     if len(rows) < 20:
         raise SystemExit(f"only {len(rows)} windows joined tape+grid — "
                          "not enough to say anything")
@@ -262,73 +261,90 @@ def main():
     print(f"settles our way {100*held/len(rows):.1f}%  -> HOLD is "
           f"{100*(held/len(rows) - ent - fee(ent)):+.2f}c/share\n")
 
-    bad = sum(1 for r in rows
-              if r["peak"] is None or r["peak"] <= r["entry"] + 1e-9)
-    print(f"never traded above what we paid: {bad}/{len(rows)} "
-          f"({100*bad/len(rows):.0f}%)  <- the scalp's failure mode\n")
+    # EVERY NUMBER BELOW IS BOUND TO A HORIZON, and the first version of this
+    # tool was not. It collected prints from t>=0 with no upper bound, so its
+    # "peak" and "ever touched" columns spanned the whole five minutes — which
+    # measures the contract CONVERGING TO SETTLEMENT, not the opening jump. A
+    # binary that resolves up drifts to 0.98 by the close, so the median peak
+    # read +45c above a 0.51 entry and the blend was a hold with a take-profit
+    # wearing the scalp's name.
+    def peak_by(r, h):
+        return max((p for t, p, _ in r["buys"] if t <= h), default=None)
 
-    print("TOUCH RATE BY EXIT LEVEL (a print at or above our resting price)")
-    print(f"{'exit':>5} {'ever':>6} {'med s':>7} "
-          + "".join(f"{f'by+{b:.0f}s':>9}" for b in BY)
-          + f"{'blend':>9} {'lo':>8} {'$/day':>9}")
+    def touch(r, x, h):
+        return next((t for t, p, _ in r["buys"]
+                     if t <= h and p >= r["entry"] + x - 1e-9), None)
+
+    print("HOW OFTEN THE JUMP GOES THE WRONG WAY, by horizon")
+    print("  (our side never printed above what we paid within...)")
+    for h in BY:
+        bad = sum(1 for r in rows
+                  if (peak_by(r, h) or 0) <= r["entry"] + 1e-9)
+        print(f"    T+{h:>4.0f}s : {bad:>4}/{len(rows)} "
+              f"({100*bad/len(rows):>5.1f}%)"
+              + ("   <- the scalp's real failure rate" if h == 15 else ""))
+
+    print("\nTHE SCALP: rest at +Xc, give up at T+H and hold to settlement")
+    print(f"{'exit':>5} {'by':>6} {'fill%':>7} {'med s':>7} {'left win%':>10} "
+          f"{'blend':>9} {'lo':>8} {'$/day':>9}")
     best = []
     for x in EXITS:
-        hits = []
-        for r in rows:
-            tgt = r["entry"] + x
-            t = next((t for t, p, _ in r["buys"] if p >= tgt - 1e-9), None)
-            hits.append(t)
-        ever = [t for t in hits if t is not None]
-        cells = "".join(
-            f"{100*sum(1 for t in ever if t <= b)/len(rows):>8.0f}%" for b in BY)
-        # blended value: filled windows pay x minus the ENTRY fee only (the
-        # resting sell is a maker fill), leftovers settle on their own record
-        H = BY[-1]
-        fill = [i for i, t in enumerate(hits) if t is not None and t <= H]
-        fs = set(fill)
-        left = [i for i in range(len(rows)) if i not in fs]
-        lw = sum(rows[i]["won"] for i in left)
-        lev = ((lw / len(left)) - ent - fee(ent)) if left else 0.0
-        blend = (len(fill) * (x - fee(ent)) + len(left) * lev) / len(rows)
-        flo, _ = wilson(len(fill), len(rows))
-        llo, _ = wilson(lw, len(left)) if left else (0.0, 1.0)
-        blo = flo * (x - fee(ent)) + (1 - flo) * min(
-            (llo - ent - fee(ent)) if left else 0.0, lev)
-        per_day = blend * 250 * len(rows) * 24.0 / span_h if span_h else 0.0
-        print(f"{100*x:>4.0f}c {100*len(ever)/len(rows):>5.0f}% "
-              f"{(st.median(ever) if ever else float('nan')):>7.1f} {cells}"
-              f"{100*blend:>+8.2f}c {100*blo:>+7.2f}c {per_day:>9.0f}")
-        best.append((blend, blo, x, len(fill)))
+        for h in BY:
+            hits = [touch(r, x, h) for r in rows]
+            fs = {i for i, t in enumerate(hits) if t is not None}
+            left = [i for i in range(len(rows)) if i not in fs]
+            lw = sum(rows[i]["won"] for i in left)
+            lev = ((lw / len(left)) - ent - fee(ent)) if left else 0.0
+            # a filled window pays x minus the ENTRY fee only: the resting
+            # sell is a maker order and maker fees are zero
+            blend = (len(fs) * (x - fee(ent)) + len(left) * lev) / len(rows)
+            flo, _ = wilson(len(fs), len(rows))
+            llo, _ = wilson(lw, len(left)) if left else (0.0, 1.0)
+            blo = flo * (x - fee(ent)) + (1 - flo) * min(
+                (llo - ent - fee(ent)) if left else 0.0, lev)
+            per_day = blend * 250 * len(rows) * 24.0 / span_h if span_h else 0.0
+            got = [t for t in hits if t is not None]
+            print(f"{100*x:>4.0f}c {f'T+{h:.0f}':>6} "
+                  f"{100*len(fs)/len(rows):>6.0f}% "
+                  f"{(st.median(got) if got else float('nan')):>7.1f} "
+                  f"{(100*lw/len(left) if left else float('nan')):>9.0f}% "
+                  f"{100*blend:>+8.2f}c {100*blo:>+7.2f}c {per_day:>9.0f}")
+            best.append((blend, blo, x, h, len(fs)))
 
-    print("\nDOES THE JUMP SCALE WITH THE TILT?")
+    print("\nDOES THE JUMP SCALE WITH THE TILT?  (peak within T+15s)")
     print(f"{'|tilt| bp':>12} {'n':>5} {'med peak':>10} {'med 5c s':>10} "
           f"{'wrong way':>10} {'settles':>9}")
     for a, b in [(GATE, 1), (1, 2), (2, 4), (4, 8), (8, 1e9)]:
         if b <= a:
             continue
-        sel = [r for r in rows if a <= abs(r["tilt"]) < b and r["peak"]]
+        sel = [r for r in rows if a <= abs(r["tilt"]) < b]
         if len(sel) < 5:
             continue
-        pk = st.median(100 * (r["peak"] - r["entry"]) for r in sel)
-        t5 = [t for r in sel for t in [next(
-            (t for t, p, _ in r["buys"] if p >= r["entry"] + 0.05 - 1e-9),
-            None)] if t is not None]
-        wrong = sum(1 for r in sel if r["peak"] <= r["entry"] + 1e-9)
+        pk = [100 * (peak_by(r, 15) - r["entry"]) for r in sel
+              if peak_by(r, 15) is not None]
+        t5 = [t for r in sel for t in [touch(r, 0.05, 15)] if t is not None]
+        wrong = sum(1 for r in sel if (peak_by(r, 15) or 0) <= r["entry"] + 1e-9)
         lbl = f"{a:.1f}-{b:.0f}" if b < 1e9 else f"{a:.0f}+"
-        print(f"{lbl:>12} {len(sel):>5} {pk:>+9.2f}c "
+        print(f"{lbl:>12} {len(sel):>5} "
+              f"{(st.median(pk) if pk else float('nan')):>+9.2f}c "
               f"{(st.median(t5) if t5 else float('nan')):>10.1f} "
               f"{100*wrong/len(sel):>9.0f}% "
               f"{100*sum(r['won'] for r in sel)/len(sel):>8.0f}%")
 
-    best.sort(key=lambda z: -z[0])
+    best.sort(key=lambda z: -z[1])          # rank by the LOWER bound
     b = best[0]
-    print(f"\nBEST EXIT: +{100*b[2]:.0f}c -> {100*b[0]:+.2f}c/share "
-          f"(lower bound {100*b[1]:+.2f}c), filling {b[3]}/{len(rows)}")
-    print("\nREAD THE LOWER BOUND, NOT THE BLEND. Eight exit levels are")
-    print("printed and the best of eight always looks good; the bound is what")
-    print("survives that. And a print at our price is not a guaranteed fill —")
-    print("queue position is not modelled here, so this is the optimistic")
-    print("half of the execution question and the live tracker is the other.")
+    print(f"\nBEST BY LOWER BOUND: +{100*b[2]:.0f}c by T+{b[3]:.0f}s -> "
+          f"{100*b[0]:+.2f}c/share, bound {100*b[1]:+.2f}c, "
+          f"filling {b[4]}/{len(rows)}")
+    print(f"HOLD TO SETTLEMENT on the same windows: "
+          f"{100*(held/len(rows) - ent - fee(ent)):+.2f}c/share")
+    print("\nRANKED BY THE LOWER BOUND, NOT THE BLEND, because this prints")
+    print(f"{len(EXITS)*len(BY)} cells and the best of {len(EXITS)*len(BY)} "
+          "always looks good. A cell whose bound is")
+    print("negative has not been shown to be anything.")
+    print("A print at our price is not a guaranteed fill — queue position is")
+    print("not modelled, so this is the OPTIMISTIC half of the execution")
+    print("question and the live bid tracker is the pessimistic half.")
 
 
 if __name__ == "__main__":
