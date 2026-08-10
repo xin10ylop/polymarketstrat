@@ -168,7 +168,8 @@ class PreopenStrategy:
         self.entries += 1
         self.marks[wts] = dict(side=side, token=token, px=order.price,
                                sz=order.filled, tilt=tilt,
-                               peak=order.price, peak_t=0.0, hit={}, n=0)
+                               peak=None, peak_t=None, low=None, low_t=None,
+                               first=None, hit={}, n=0)
         log.info("w%s PREOPEN %s x%.0f @ %.3f (tilt %+.2fbp, spot %.2f "
                  "strike %.2f)", wts, side, order.filled, order.price, tilt, s, k)
         self.ledger.event("preopen_entry", json.dumps(
@@ -200,9 +201,22 @@ class PreopenStrategy:
         bid = getattr(st, "best_bid", None) if st is not None else None
         if bid is None:
             return
+        t = round(now - wts, 2)
         info["n"] = info.get("n", 0) + 1
+        # SEEDED FROM THE FIRST OBSERVED BID, NOT FROM THE ENTRY PRICE. The
+        # first version seeded the peak at what we paid and only ratcheted
+        # up, so a window whose jump went the WRONG way recorded peak==entry
+        # and was indistinguishable from one that drifted to exactly
+        # break-even. That hid the scalp's only real failure mode — the book
+        # repricing against the side the tilt picked — behind a floor.
+        if info["peak"] is None:
+            info["first"] = bid
+            info["peak"] = info["low"] = bid
+            info["peak_t"] = info["low_t"] = t
         if bid > info["peak"]:
-            info["peak"], info["peak_t"] = bid, round(now - wts, 2)
+            info["peak"], info["peak_t"] = bid, t
+        if bid < info["low"]:
+            info["low"], info["low_t"] = bid, t
         for c in self.cfg.preopen_track_levels:
             k = str(int(round(c * 100)))
             if k not in info["hit"] and bid >= info["px"] + c - 1e-9:
@@ -222,13 +236,24 @@ class PreopenStrategy:
              "ask": None if ask is None else round(ask, 4),
              # peak bid reached, and WHEN — an exit level is only real if the
              # touch happens early enough to be worth resting for
-             "peak": round(info["peak"], 4),
+             "peak": None if info["peak"] is None else round(info["peak"], 4),
              "peak_t": info["peak_t"],
+             # the other side of the same question: how far the book repriced
+             # AGAINST us, which is the scalp's whole risk and what the
+             # leftover position is worth if no level is ever touched
+             "low": None if info["low"] is None else round(info["low"], 4),
+             "low_t": info["low_t"],
+             "first": None if info["first"] is None else round(info["first"], 4),
              # {cents_above_entry: seconds_after_open_first_touched}
              "hit": info["hit"],
              "samples": info.get("n", 0)},
             separators=(",", ":")))
-        log.info("w%s preopen mark: peak %+.3fc at t+%.1fs, touched %s",
-                 wts, 100 * (info["peak"] - info["px"]), info["peak_t"] or 0.0,
+        if info["peak"] is None:
+            log.info("w%s preopen mark: no book samples after the open", wts)
+            return
+        log.info("w%s preopen mark: peak %+.2fc at t+%.1fs, low %+.2fc at "
+                 "t+%.1fs, touched %s", wts,
+                 100 * (info["peak"] - info["px"]), info["peak_t"],
+                 100 * (info["low"] - info["px"]), info["low_t"],
                  ",".join(f"{k}c@{v:.0f}s" for k, v in sorted(
                      info["hit"].items(), key=lambda z: int(z[0]))) or "nothing")

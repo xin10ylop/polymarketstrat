@@ -182,7 +182,8 @@ _clob = _Clob()
 _p = PreopenStrategy(CFG, _clob, None, None, None, None, None)
 _W = 1_000_000
 _info = dict(side="up", token="t", px=0.50, sz=250, tilt=1.0,
-             peak=0.50, peak_t=0.0, hit={}, n=0)
+             peak=None, peak_t=None, low=None, low_t=None, first=None,
+             hit={}, n=0)
 # the bid spikes to 0.56 for a single sample at t+7, then falls back
 _PATH = [(0.0, 0.505), (2.0, 0.508), (5.0, 0.512), (7.0, 0.560),
          (9.0, 0.514), (15.0, 0.511), (30.0, 0.509)]
@@ -201,10 +202,28 @@ _snap = {t: b for t, b in _PATH if t in (2.0, 15.0, 30.0)}
 check_true("the three-snapshot method would have missed the 5c fill entirely",
            all(b < 0.55 for b in _snap.values()), f"(it sees {_snap})")
 # nothing before the open counts
-_pre = dict(_info, hit={}, peak=0.50, peak_t=0.0)
+_pre = dict(_info, hit={}, peak=None, peak_t=None, low=None, low_t=None)
 _clob.st.best_bid = 0.99
 _p._track(_W, _pre, _W - 1.0)
-check_true("samples before the open are ignored", not _pre["hit"])
+check_true("samples before the open are ignored",
+           not _pre["hit"] and _pre["peak"] is None)
+
+print("\nthe tracker can see the book repricing AGAINST us")
+# The first version seeded the peak at the entry price and only ratcheted up,
+# so a jump the wrong way was indistinguishable from one that went nowhere.
+_c2 = _Clob()
+_p2 = PreopenStrategy(CFG, _c2, None, None, None, None, None)
+_bad = dict(side="up", token="t", px=0.50, sz=250, tilt=1.0, peak=None,
+            peak_t=None, low=None, low_t=None, first=None, hit={}, n=0)
+for _dt, _bid in [(0.5, 0.497), (2.0, 0.462), (6.0, 0.441), (20.0, 0.455)]:
+    _c2.st.best_bid = _bid
+    _p2._track(_W, _bad, _W + _dt)
+check("peak is the best bid seen, BELOW entry here", _bad["peak"], 0.497)
+check("the low is recorded", _bad["low"], 0.441)
+check("and when the low happened", _bad["low_t"], 6.0)
+check_true("no exit level was ever touched", not _bad["hit"])
+check_true("this is now distinguishable from a flat window",
+           _bad["peak"] < 0.50, f"(peak {_bad['peak']} < entry 0.50)")
 
 print("\n" + ("ALL PASS" if not FAILED else f"{len(FAILED)} FAILED: {FAILED}"))
 raise SystemExit(1 if FAILED else 0)
