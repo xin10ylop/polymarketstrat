@@ -1893,3 +1893,32 @@ them in that order.
   second is fatal to the measurement; the first only costs sample count.
   health.py's expected rate for the pair now derives from EVERY rather than
   a hardcoded 150, so THIN means a precise thing.
+
+- 2026-08-10 THE PAIR, MEASURED SIMULTANEOUSLY AT LAST — AND IT IS SMALL.
+  The recorder's whole reason for existing is settled: leg separation is
+  0.24s median / 0.27s p90 on the droplet (1.05s on my sandbox), against
+  the 60s the candle data forced. Zero fetch failures. The timing ambiguity
+  that made the historical pair analysis meaningless is gone.
+  POOLED, 98 samples over 6 windows (droplet 4, mine 2):
+      gap present in 28% of samples (droplet 19/77, mine 8/21)
+      mean gap when present  1.72c per pair
+      binding-leg size       ~104 contracts median, p10 = 0
+      median cost with no gap 1.0158 — normally you pay 1.6c ABOVE par
+  ECONOMICS AT FACE VALUE: 1.72c x 104 = $1.78 per tradeable window;
+  ~26 of 96 daily windows qualify; **$47/day GROSS**.
+  NOT IN THAT NUMBER: legging risk (two venues, two order sends, and a
+  half-filled pair is a naked directional position, not an arbitrage), the
+  3.1% feed-disagreement variance, capital parked on both venues, and the
+  p10 binding size of ZERO meaning a tenth of the "opportunities" have no
+  size at all.
+  CONTEXT FOR THE DECISION: the whole historical record was +$3,199, and
+  four days of it made 110%. $47/day gross from a two-venue build with KYC,
+  USD on Kalshi, crypto on Polymarket and cross-venue execution risk is not
+  obviously worth building, and 6 windows is not a sample.
+  PRE-REGISTERED DECISION RULE, written before the data arrives so it
+  cannot be rationalised afterwards: after ONE full day (~96 windows), if
+  the gross is under $100/day, the two-venue build is not worth it and this
+  line closes. If it is over $100/day AND the realised section (which prices
+  the feed-disagreement risk rather than assuming it away) is positive at
+  its lower bound, it graduates to an execution-feasibility study. Anything
+  in between stays a recorder.
