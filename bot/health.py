@@ -31,7 +31,10 @@ DEAD_S = float(os.environ.get("DEAD_S", "900"))     # quiet this long = dead
 SOURCES = [
     (f"{ROOT}/bookcal/*_book.db", "book", "ts", 300),
     (f"{ROOT}/twapcal/*_1s.db", "px", "ts", 3400),
-    (f"{ROOT}/paircal/*.db", "pair", "ts", 150),
+    # 3600/EVERY, minus slack for window boundaries where one venue is
+    # briefly unresolvable. EVERY defaults to 20s in the service unit.
+    (f"{ROOT}/paircal/*.db", "pair", "ts",
+     int(3600 / float(os.environ.get("EVERY", "20")) * 0.8)),
     (f"{ROOT}/*/paper.db", "fills", "ts", None),    # bots: rate varies, no floor
 ]
 

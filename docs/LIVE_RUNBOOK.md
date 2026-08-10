@@ -1871,3 +1871,25 @@ them in that order.
   Zero rows is broken for a RECORDER and normal for a ledger with no fills.
   Fixed — only sources carrying a rate expectation can be dead from
   emptiness.
+
+- 2026-08-10 THE SOL GRID HAD NO SERVICE AT ALL. health.py flagged
+  twapcal/sol_1s.db dead 19h; `systemctl restart polybot-twaprec-sol`
+  matched nothing because that unit was never written — only btc and eth
+  twaprec units exist. The SOL grid was recorded by hand at some point and
+  stopped when whatever ran it stopped. Added the unit.
+  IMPACT IS RESEARCH-ONLY: the twapcal grids feed twap_verify, open_offset,
+  price_curve and friends. The bots' oracle subscribes to the live feed and
+  never reads these files, so no trading was affected. Worth having anyway
+  — every replication test this week has leaned on btc and eth, which
+  correlate 0.809, and a third coin is the cheapest way to stop pooling two
+  near-identical samples and calling it independent.
+  PAIR RECORDER IS WRITING BUT UNDER-SAMPLING: 59 rows/h where EVERY=20s
+  should give 180. That is roughly one sample per minute, i.e. each cycle is
+  taking ~60s rather than ~3s. The likely cause is fetch timeouts — get()
+  uses tries=2 with a 12s timeout, so one bad leg costs 24s and three legs
+  can cost 72s — on a 512MB box that is already at 54% memory and 25% swap.
+  bot/pair_report prints fetch failures and the leg-separation distribution,
+  which distinguishes "slow but simultaneous" from "slow and skewed". The
+  second is fatal to the measurement; the first only costs sample count.
+  health.py's expected rate for the pair now derives from EVERY rather than
+  a hardcoded 150, so THIN means a precise thing.
