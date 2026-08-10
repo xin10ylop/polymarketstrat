@@ -105,10 +105,16 @@ class PreopenStrategy:
         while True:
             now = time.time()
             nxt = int(now - now % T) + T          # the window about to open
-            # ---- post-open mark for a window we entered (telemetry only)
+            # ---- post-open tracking for a window we entered (telemetry only)
             for wts, info in list(self.marks.items()):
-                if now >= wts + self.cfg.preopen_mark_s:
-                    self._mark(wts, info)
+                try:
+                    self._track(wts, info, now)
+                    if now >= wts + self.cfg.preopen_track_s:
+                        self._flush(wts, info)
+                except Exception as e:  # noqa: BLE001
+                    # telemetry must never be able to stop the trading loop
+                    self.marks.pop(wts, None)
+                    log.warning("w%s preopen track error: %s", wts, e)
             if nxt in self.done or not self.cfg.preopen_enabled:
                 await asyncio.sleep(0.2)
                 continue
@@ -161,7 +167,8 @@ class PreopenStrategy:
             return self._skip("no_fill", wts, f"{side} ask {st.best_ask:.3f}")
         self.entries += 1
         self.marks[wts] = dict(side=side, token=token, px=order.price,
-                               sz=order.filled, tilt=tilt)
+                               sz=order.filled, tilt=tilt,
+                               peak=order.price, peak_t=0.0, hit={}, n=0)
         log.info("w%s PREOPEN %s x%.0f @ %.3f (tilt %+.2fbp, spot %.2f "
                  "strike %.2f)", wts, side, order.filled, order.price, tilt, s, k)
         self.ledger.event("preopen_entry", json.dumps(
@@ -170,20 +177,58 @@ class PreopenStrategy:
              "lead": self.cfg.preopen_lead_s}, separators=(",", ":")))
         return True
 
-    def _mark(self, wts, info):
-        """Where our side trades after the open — prices the +5c exit later."""
+    def _track(self, wts, info, now):
+        """Watch the bid on our side continuously from the open.
+
+        THIS IS THE WHOLE POINT. A resting limit sell fills the instant the
+        price touches it, even for a moment. Recording the book at T+2, T+15
+        and T+30 asks instead "was the bid above target at these three
+        instants", which is a strictly harder test and misses every touch in
+        between — so the fill rates measured that way (5c in 60-78% of
+        windows within 30s) are lower bounds by an unknown margin.
+
+        The CLOB websocket is already subscribed to this token, so sampling
+        it on the loop's own cadence costs nothing. What gets recorded is the
+        running peak bid, when it happened, and the first second each exit
+        level was reached: that is exactly the set of orders that would have
+        filled, and it prices every exit level at once instead of committing
+        to 5c in advance.
+        """
+        if now < wts:
+            return
+        st = self.clob.state(info["token"])
+        bid = getattr(st, "best_bid", None) if st is not None else None
+        if bid is None:
+            return
+        info["n"] = info.get("n", 0) + 1
+        if bid > info["peak"]:
+            info["peak"], info["peak_t"] = bid, round(now - wts, 2)
+        for c in self.cfg.preopen_track_levels:
+            k = str(int(round(c * 100)))
+            if k not in info["hit"] and bid >= info["px"] + c - 1e-9:
+                info["hit"][k] = round(now - wts, 2)
+
+    def _flush(self, wts, info):
+        """One row per position: the full touch profile of the post-open move."""
         self.marks.pop(wts, None)
         st = self.clob.state(info["token"])
         bid = getattr(st, "best_bid", None) if st is not None else None
         ask = getattr(st, "best_ask", None) if st is not None else None
-        exit_px = info["px"] + self.cfg.preopen_exit_c
         self.ledger.event("preopen_mark", json.dumps(
             {"w": wts, "side": info["side"], "entry": round(info["px"], 4),
              "sz": round(info["sz"], 1), "tilt": round(info["tilt"], 3),
-             "t": self.cfg.preopen_mark_s,
+             "t": self.cfg.preopen_track_s,
              "bid": None if bid is None else round(bid, 4),
              "ask": None if ask is None else round(ask, 4),
-             "exit_target": round(exit_px, 4),
-             # would a resting +5c sell have been reachable at this instant?
-             "exit_hit": None if bid is None else bool(bid >= exit_px)},
+             # peak bid reached, and WHEN — an exit level is only real if the
+             # touch happens early enough to be worth resting for
+             "peak": round(info["peak"], 4),
+             "peak_t": info["peak_t"],
+             # {cents_above_entry: seconds_after_open_first_touched}
+             "hit": info["hit"],
+             "samples": info.get("n", 0)},
             separators=(",", ":")))
+        log.info("w%s preopen mark: peak %+.3fc at t+%.1fs, touched %s",
+                 wts, 100 * (info["peak"] - info["px"]), info["peak_t"] or 0.0,
+                 ",".join(f"{k}c@{v:.0f}s" for k, v in sorted(
+                     info["hit"].items(), key=lambda z: int(z[0]))) or "nothing")

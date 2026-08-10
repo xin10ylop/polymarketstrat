@@ -159,6 +159,16 @@ class Config:
     # 6.5% of btc windows and 10.1% of eth) and leaving the two thinnest
     # buckets, where the evidence is n=1, out of scope.
     preopen_min_coverage: float = _env("PREOPEN_MIN_COVERAGE", 0.75, float)
+    # A RESTING LIMIT SELL FILLS ON A TOUCH. Sampling the book at three fixed
+    # instants answers "was the bid above target at this moment", which is a
+    # strictly harder question and understates the fill rate by every touch
+    # in between. These drive continuous tracking off the CLOB websocket the
+    # bot already holds, so the cost is zero extra requests.
+    preopen_track_s: float = _env("PREOPEN_TRACK_S", 90.0, float)
+    preopen_track_levels: tuple = tuple(
+        float(x) for x in _env(
+            "PREOPEN_TRACK_LEVELS", "0.01,0.02,0.03,0.04,0.05,0.07,0.10"
+        ).split(","))
     # ^ 0 = off. Jun-Jul reconstruction says deep (<=0.80) asks decayed to -EV,
     #   but live paper fills there still print +EV — let the paper ledger
     #   referee; flip to 0.90 if a week of deep fills bleeds (runbook item)

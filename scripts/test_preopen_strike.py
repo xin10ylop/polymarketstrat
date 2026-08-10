@@ -159,5 +159,52 @@ tilt = (100.6 - k) / k * 1e4
 check_true("a spot above the trailing mean tilts up", tilt > 0,
            f"(tilt {tilt:+.2f}bp)")
 
+print("\nthe touch tracker catches what three snapshots cannot")
+# The reason this exists: a resting limit sell fills on a momentary touch.
+# exit_curve could only read the book at T+2/T+15/T+30, so a spike between
+# those instants was invisible and its fill rates are lower bounds.
+from bot.strategies.preopen import PreopenStrategy      # noqa: E402
+
+
+class _State:
+    best_bid = None
+
+
+class _Clob:
+    def __init__(self):
+        self.st = _State()
+
+    def state(self, _tok):
+        return self.st
+
+
+_clob = _Clob()
+_p = PreopenStrategy(CFG, _clob, None, None, None, None, None)
+_W = 1_000_000
+_info = dict(side="up", token="t", px=0.50, sz=250, tilt=1.0,
+             peak=0.50, peak_t=0.0, hit={}, n=0)
+# the bid spikes to 0.56 for a single sample at t+7, then falls back
+_PATH = [(0.0, 0.505), (2.0, 0.508), (5.0, 0.512), (7.0, 0.560),
+         (9.0, 0.514), (15.0, 0.511), (30.0, 0.509)]
+for _dt, _bid in _PATH:
+    _clob.st.best_bid = _bid
+    _p._track(_W, _info, _W + _dt)
+
+check("peak bid recorded", _info["peak"], 0.560)
+check("and when it happened", _info["peak_t"], 7.0)
+check("a 5c touch lasting one sample is caught", _info["hit"].get("5"), 7.0)
+check("1c is caught earlier, when the bid first crosses 0.51",
+      _info["hit"].get("1"), 5.0)
+check_true("10c was never reached, so it is absent rather than zero",
+           "10" not in _info["hit"])
+_snap = {t: b for t, b in _PATH if t in (2.0, 15.0, 30.0)}
+check_true("the three-snapshot method would have missed the 5c fill entirely",
+           all(b < 0.55 for b in _snap.values()), f"(it sees {_snap})")
+# nothing before the open counts
+_pre = dict(_info, hit={}, peak=0.50, peak_t=0.0)
+_clob.st.best_bid = 0.99
+_p._track(_W, _pre, _W - 1.0)
+check_true("samples before the open are ignored", not _pre["hit"])
+
 print("\n" + ("ALL PASS" if not FAILED else f"{len(FAILED)} FAILED: {FAILED}"))
 raise SystemExit(1 if FAILED else 0)
