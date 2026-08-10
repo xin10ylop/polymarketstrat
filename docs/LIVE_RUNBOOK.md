@@ -2110,3 +2110,52 @@ them in that order.
   NOTE THE BUCKET DETAIL IS NOISY (btc 0.50-0.75 wins 54.0% while 0.75-1.00
   wins 62.7%). The fine structure is sampling noise; only the CUMULATIVE
   gate rows are stable, which is why the gate is chosen from those.
+
+- 2026-08-10 SCALP vs HOLD, SETTLED ON THE REAL TAPE (121 btc / 75 eth / 43
+  sol windows, post-rule-change, Polymarket data-api trades joined to the
+  Chainlink grid). The user's specified strategy — buy at T-3, rest a limit
+  sell at +5c — was measured properly for the first time and it does NOT beat
+  holding to settlement.
+
+    btc  HOLD        66.9% settle, EV +13.28c/share, 95% floor +4.53c
+         SCALP 7c@T+5   fills 64%,  EV  +9.47c/share, 95% floor +3.86c
+
+  WHY THE HOLD WINS, and it is structural rather than a sample artifact: an
+  exit at +Xc CAPS the upside at X while a loser still costs the full entry.
+  Holding collects the whole 1.00 on a winner. At a 67% win rate that cap is
+  expensive. The tell is in the output — the windows that have NOT jumped by
+  T+5 still settle 70%, so the scalp is selling winners cheap. The scalp is
+  the right instrument only where the settlement edge is weak; here it is not.
+
+  THE JUMP ITSELF IS REAL AND IT SCALES. Wrong-way rate (our side never
+  printing above what we paid) is 1/121 = 0.8% within T+15 on btc. Median peak
+  within T+15, by tilt bucket: 0.5-1bp -> +11.15c, 1-2bp -> +16.64c,
+  2-4bp -> +18.00c. So the tilt predicts the SIZE of the repricing and not
+  only its direction, and a fixed +5c exit captures roughly a third of the
+  move it could have.
+
+  THE 0.5bp GATE I WIDENED TO ON 08-10 IS NOT SUPPORTED BY THIS. Break-even
+  at the observed 0.5187 entry is 53.62%.
+    0.5-1bp  n=72  settles 62%  CI [51.0, 72.8]  floor -2.66c  does NOT clear
+    1-2bp    n=40  settles 72%  CI [57.2, 83.9]  floor +3.55c  CLEARS
+  The earlier measurement that motivated widening came from price_curve, which
+  never joined settled outcomes to pre-open TRANSACTED prices; this one does.
+  NOT reverted, deliberately: it is paper, the marginal bucket is positive in
+  expectation (+8.38c) and merely unproven, and the wider gate is what
+  generates the sample that will settle it. This must be decided before any
+  real money.
+
+  SOL IS DEAD. 51.2% settle (floor 36.8%), and 51% of windows had not printed
+  above entry even at T+5 — the jump is both weaker and slower. Do not deploy.
+  ETH IS NOT ESTABLISHED: 64.0% settle but the floor is -0.05c, i.e. exactly
+  break-even. Keep collecting; do not size up.
+
+  METHOD NOTE — three measurement errors preceded this result and all had the
+  same shape, an easy number standing in for the hard one. (1) exit_curve read
+  the book at three instants, but a resting sell fills on a TOUCH, so its fill
+  rates were lower bounds by an unknown margin; the user caught this. (2) The
+  first tape run collected prints with no upper time bound, so "peak" measured
+  the contract converging to 0.98 by the close rather than the opening jump —
+  it read +45c above a 0.51 entry. (3) The live tracker seeded its peak at the
+  entry price and only ratcheted up, so a jump the WRONG way was invisible.
+  Every number above is horizon-bound and every one of those is fixed.
