@@ -20,6 +20,7 @@ Environment=FAMILY=5m
 # strike is a trailing 30s mean, so the window opens off-strike and the
 # tilt is knowable at T+0. That is the one moment no recorder has ever
 # sampled, and it is where the book is deep and priced near 0.50.
+Environment=PREOPEN=20,10,5,3
 Environment=LEADS=298,285,270,240,180,150,120,90,60,45,30,20,10,6,3
 Environment=BOOK_DIR=/opt/polymarketstrat/bot/data/bookcal
 ExecStart=/opt/polymarketstrat/venv/bin/python -m bot.book_record

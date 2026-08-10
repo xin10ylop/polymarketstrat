@@ -29,6 +29,14 @@ WINDOW = 900 if FAMILY == "15m" else 300
 SLUG = f"{COIN}-updown-{FAMILY}-"
 LEADS = sorted((int(x) for x in os.environ.get(
     "LEADS", "120,90,60,45,30,20,10,6,3").split(",")), reverse=True)
+# Seconds BEFORE the next window opens. Stored as lead = WINDOW + n, so a 5m
+# window's T-3 is lead 303 and the existing schema needs no change.
+# THIS IS THE ONLY MOMENT NOTHING HAS EVER SAMPLED. The book sits flat and
+# symmetric until the open (~0.50 both sides, hundreds of shares) and reprices
+# to ~0.563 on the tilt side within two seconds. Every other recorder on this
+# project starts at T+2, i.e. AFTER that move.
+PREOPEN = sorted((int(x) for x in os.environ.get("PREOPEN", "20,10,5,3")
+                  .split(",") if x.strip()), reverse=True)
 OUT_DIR = os.environ.get("BOOK_DIR", "bot/data/bookcal")
 HDRS = {"User-Agent": "Mozilla/5.0"}
 
@@ -103,15 +111,38 @@ def main():
     print(f"book recorder: {COIN} {FAMILY}, leads {LEADS}s -> "
           f"{OUT_DIR}/{COIN}_{FAMILY}_book.db", flush=True)
     cur_wts, toks, done = None, None, set()
+    nxt_toks, nxt_for = None, None
     while True:
         now = time.time()
         wts = int(now - now % WINDOW)
         C = wts + WINDOW
         if wts != cur_wts:
             cur_wts, done = wts, set()
-            toks = tokens(wts)
+            # reuse the tokens already fetched for the pre-open sampling
+            toks = nxt_toks if nxt_for == wts else tokens(wts)
+            nxt_toks, nxt_for = None, None
             if toks is None or None in toks:
                 print(f"w{wts} no market", flush=True)
+        # ---- pre-open: sample the NEXT window before it starts
+        if PREOPEN and nxt_toks is None and C - now <= max(PREOPEN) + 20:
+            nxt_toks, nxt_for = tokens(C), C
+        if nxt_toks and None not in nxt_toks:
+            for n_ in PREOPEN:
+                key = WINDOW + n_
+                if key in done:
+                    continue
+                if not (0 <= (C - n_) - now <= 2.0):
+                    continue
+                done.add(key)
+                for side, tok in (("up", nxt_toks[0]), ("down", nxt_toks[1])):
+                    t = top(tok)
+                    err = 1 if t is None else 0
+                    t = t or (None, None, None, None)
+                    db.execute(
+                        "INSERT OR REPLACE INTO book(wts,lead,side,ask,ask_sz,"
+                        "bid,bid_sz,ts,err) VALUES(?,?,?,?,?,?,?,?,?)",
+                        (C, key, side, t[0], t[1], t[2], t[3], time.time(), err))
+                db.commit()
         if toks and None not in toks:
             left = C - now
             for L in LEADS:

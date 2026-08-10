@@ -1922,3 +1922,53 @@ them in that order.
   the feed-disagreement risk rather than assuming it away) is positive at
   its lower bound, it graduates to an execution-feasibility study. Anything
   in between stays a recorder.
+
+- 2026-08-10 THE PRE-OPEN ENTRY. Owner proposed buying a side seconds BEFORE
+  the window opens and resting a +5c limit. Tested, and the enabling facts
+  are measured rather than assumed.
+  1. THE SIDE IS CALLABLE BEFORE THE OPEN. The strike is the 30s mean ending
+     at T, so at T-3 we know 27 of its 30 seconds and extrapolate the rest
+     from the last print. Sign agreement with the true T+0 tilt, 6,047
+     windows per coin:
+         lead   btc all   btc |tilt|>=1bp   eth |tilt|>=1bp
+         T-3s    86.9%        98.86%            97.42%
+         T-5s    81.8%        95.37%            92.94%
+         T-10s   73.6%        82.56%            79.70%
+         T-20s   62.3%        64.17%            62.07%
+     T-3 is the right lead and T-10 is already too late. This vindicates the
+     3-second figure in the proposal exactly.
+  2. THE PRE-OPEN BOOK IS FLAT AND DEEP. Sampled live 176s before an open:
+         up   ask 0.51 x 599   bid 0.50
+         down ask 0.50 x 146   bid 0.49
+     Symmetric, ~0.50 both sides, hundreds of shares. It carries no
+     information because the strike does not exist yet.
+  3. THE SNAP IS ALREADY MEASURED. The tilt side's ask is 0.563 at T+2 and
+     0.602 at T+15 (177 windows). So the book moves ~5.8c in two seconds and
+     a +5c limit rests INSIDE that move.
+  THE ARITHMETIC, from measured inputs only, entry 0.505, taker fee
+  0.07p(1-p) in and maker fee ZERO out:
+      ALL windows   T-3 side wins 55.6%  -> hold +3.36c/sh  [lo -4.24c, n=177]
+      |tilt|>=1bp   T-3 side wins 60.4%  -> hold +8.12c/sh  [lo +5.68c, n=1577]
+      exit at +5c instead of holding: +3.25c/sh whenever it fills
+  A POSITIVE LOWER BOUND ON A LARGE SAMPLE. First one on this project.
+  WHY IT WAS MISSED FOR A WEEK: every recorder here starts at T+2. The
+  0.505 -> 0.563 repricing happens in the first two seconds and no
+  instrument ever sampled before it. The edge is not a better forecast —
+  it is the SAME forecast, bought three seconds earlier at a flat book.
+  Every negative result this week (open tilt +0.6 points, AHL +0.12 points)
+  priced entry at 0.563 because that is where the data started.
+  NOT YET MEASURED, and any of the three can still kill it:
+   (a) whether the pre-open book LEANS toward the tilt side. One sample
+       showed a 1c lean (up 0.51 / down 0.50). If that lean tracks the tilt
+       the edge shrinks by it, and if it tracks it fully the edge is gone.
+   (b) whether the book moves between T-20 and T-3.
+   (c) whether a +5c limit actually FILLS or the snap jumps past it.
+  Recorders now sample PREOPEN=20,10,5,3 on the NEXT window, stored as
+  lead = WINDOW + n (so a 5m T-3 is lead 303), which price_curve already
+  reads as spot(C-L) with no change. Collection starts immediately because
+  an unsampled window is lost forever.
+  NOTE A KNOWN LOOKAHEAD TO FIX BEFORE TRUSTING price_curve ON THESE LEADS:
+  at T-3 only 27 of the strike's 30 seconds exist, but price_curve builds
+  the strike from all 30. That overstates the pre-open signal slightly. The
+  sign-agreement table above is the honest version and is what the
+  arithmetic uses; price_curve needs a truncated strike for leads > WINDOW.

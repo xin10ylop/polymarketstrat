@@ -16,6 +16,7 @@ Environment=FAMILY=15m
 # accuracy at >5bp holds far earlier than the original 120s ceiling
 # (btc 15m: 98.6% at 180s, 95.5% at 300s) and those prices have
 # never been observed. Cannot be back-filled, so record them now.
+Environment=PREOPEN=20,10,5,3
 Environment=LEADS=898,885,870,840,780,600,450,300,240,180,120,90,60,45,30,20,10,6,3
 Environment=BOOK_DIR=/opt/polymarketstrat/bot/data/bookcal
 ExecStart=/opt/polymarketstrat/venv/bin/python -m bot.book_record
