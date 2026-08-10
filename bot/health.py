@@ -70,18 +70,23 @@ def main():
                 worst = max(worst, lvl)
                 continue
             age = now - last
-            # a bot ledger with no fills is normal; a recorder with no rows
-            # is not. Only recorders carry a rate expectation.
-            if age > DEAD_S:
+            if expect is None:
+                # A BOT LEDGER WRITES ONLY WHEN IT FILLS, so its write rate
+                # carries no information about health and no age threshold
+                # may be applied to it. The previous version rescued only the
+                # DEAD branch, so a pre-open bot sitting between signals for
+                # nine minutes reported STALE and raised the banner — which is
+                # exactly the noise that would hide a real recorder outage the
+                # next time one happens.
+                v, lvl = ("idle" if age > WARN_S else "ok"), 0
+            elif age > DEAD_S:
                 v, lvl = "DEAD", 2
             elif age > WARN_S:
                 v, lvl = "STALE", 1
-            elif expect and hr < 0.4 * expect:
+            elif hr < 0.4 * expect:
                 v, lvl = "THIN", 1
             else:
                 v, lvl = "ok", 0
-            if expect is None and age > DEAD_S:
-                v, lvl = "idle", 0          # no fills is not a failure
             worst = max(worst, lvl)
             ago = (f"{age:.0f}s" if age < 120 else
                    f"{age/60:.0f}m" if age < 7200 else f"{age/3600:.1f}h")
