@@ -1593,3 +1593,41 @@ them in that order.
   event, two resolvers. That is a price gap, not a signal, so it is the one
   remaining candidate not capped by the fee wall — a cross-venue gap can be
   10 points where a forecast is worth 0.6.
+
+- 2026-08-10 PARITY AUDIT RAN. MY PREDICTION FAILED, AND THE AUDIT CANNOT
+  ANSWER THE QUESTION IT WAS BUILT FOR. Both of those need saying.
+  THE PREDICTION, AS WRITTEN, IS REFUTED. I said collapse fills should win
+  MORE than clean ones, and that if they won less my account of the old
+  mechanism was wrong. Measured:
+      collapse   16 takes  2,027 sh   38% won  paid 0.457 saw 0.607  -$258.70
+      clean     169 takes 18,170 sh   86% won  paid 0.859 saw 0.829  -$179.30
+  -48 points. When the book collapsed, the book was right and our fv>=0.995
+  was wrong. On this evidence the collapse path is informed flow and the
+  cheap fills are adverse selection, not a feed edge.
+  BUT THE COVERAGE MAKES IT A DIFFERENT TEST THAN THE ONE I SPECIFIED, and
+  this is a limitation, not a defence. The depth tap was added 2026-07-31
+  (commit 27c6600). The 185 joined takes carry -$438 of a +$3,199 record.
+  The snipe unit alone is +$2,225.52 over 181 takes while its 108 joined
+  takes carry -$76.36 — so essentially the entire record predates the
+  telemetry and this audit is silent on it. The prediction was about
+  PRE-CUTOVER behaviour; the covered window is mostly at or after the point
+  where the record stopped being made. Tool now splits at 08-07 so the
+  07-31 -> 08-06 slice, which IS covered and IS pre-change, can answer it
+  properly. Until that prints, treat the mechanism account as UNDER
+  CHALLENGE rather than either confirmed or retracted.
+  A DEFECT IN MY OWN TOOL, FOUND BY ITS OUTPUT. AT SIGNAL came out BETTER
+  than RECORDED (-$226.84 vs -$438.00), which made no sense for a
+  pessimistic counterfactual. Cause: it repriced every fill at the BEST
+  pre-latency ask, silently assuming the whole clip filled at the touch.
+  Clean fills paid 0.859 having seen 0.829 — the sweep walks UP the ladder —
+  so my "worst case" was cheaper than reality for 169 of 185 takes. It now
+  sweeps the observed 5-level ladder for the actual share count. The
+  -$226.84 figure is void.
+  WHAT STANDS REGARDLESS. (1) The collapse path lost $258.70 on 16 takes and
+  wins 38%; snipe_price_floor=0.0 is what lets it through. (2) The
+  0.95-1.01 bucket lost $415.82 on 81 takes — the single worst line in the
+  covered period, and the same region the loss audit found earned nothing
+  historically. (3) A "when the money was made" table is now printed first,
+  because the striking fact here is not fill fidelity — it is that the
+  record appears to have stopped being made BEFORE the rule change, which
+  would mean 08-07 is not the explanation for the drought.

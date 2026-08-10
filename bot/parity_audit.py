@@ -52,6 +52,9 @@ import sqlite3
 DB = os.environ.get("DB", "")
 ROOT = os.environ.get("DATA_ROOT", "bot/data")
 DROP = float(os.environ.get("DROP", "0.05"))     # what counts as a collapse
+# the venue switched 5m/15m settlement to a rolling TWAP at this instant; the
+# "book watches the tape, we settle on chainlink" story only applies BEFORE it
+CUTOVER = int(os.environ.get("CUTOVER", "1786060800"))   # 2026-08-07 00:00 UTC
 FEE = float(os.environ.get("TAKER_FEE_MULT", "0.07"))
 STRAT = os.environ.get("STRAT", "snipe")
 
@@ -109,8 +112,8 @@ def load(path):
         post = d.get("post") or []
         if not pre or not post:
             continue
-        evs.append((ts, d["w"], float(pre[0][0]), float(post[0][0]),
-                    float(d["fill"])))
+        evs.append((ts, d["w"], [(float(a), float(b)) for a, b in pre],
+                    float(post[0][0]), float(d["fill"])))
 
     # join each order to the depth event written immediately after its take
     joined = []
@@ -124,8 +127,27 @@ def load(path):
         if not cands:
             continue
         e = min(cands, key=lambda e: abs(e[0] - o["ts"]))
-        joined.append((o, e[2], e[3]))          # order, pre_ask, post_ask
+        joined.append((o, e[2], e[3]))          # order, pre LADDER, post_ask
     return list(settled.values()), joined
+
+
+def sweep(ladder, size):
+    """Average price to buy `size` by walking the ladder we SAW, cheapest
+    first. The old version used only the best level, which quietly assumed
+    the whole clip filled at the touch — that made the counterfactual
+    OPTIMISTIC for ordinary fills, not pessimistic, and inverted the test."""
+    need, cost, got = size, 0.0, 0.0
+    for px, sz in sorted(ladder):
+        if need <= 0:
+            break
+        t = min(sz, need)
+        cost += px * t
+        got += t
+        need -= t
+    if need > 0 and ladder:                 # deeper than we could see
+        cost += max(p for p, _ in ladder) * need
+        got += need
+    return cost / got if got else None
 
 
 def main():
@@ -147,6 +169,22 @@ def main():
               f"{sum(o['pnl'] for o in s):>+11.2f} {len(j):>7} "
               f"{sum(o['pnl'] for o, _, _ in j):>+12.2f}")
 
+    # WHEN was the record made? The telemetry only starts 07-31, so before
+    # arguing about fill fidelity, see which days the money actually came from.
+    import time as _tt
+    byday = {}
+    for o in settled:
+        d = _tt.strftime("%m-%d", _tt.gmtime(o["ts"]))
+        a = byday.setdefault(d, [0, 0.0])
+        a[0] += 1
+        a[1] += o["pnl"]
+    print("\nWHEN THE MONEY WAS MADE (all settled takes, every unit)")
+    run = 0.0
+    for d in sorted(byday):
+        n_, p_ = byday[d]
+        run += p_
+        print(f"  {d}  {n_:>4} takes  {p_:>+10.2f}   running {run:>+10.2f}")
+
     tot_orders, tot_pnl = len(settled), sum(o["pnl"] for o in settled)
     print(f"\npooled: {tot_orders} settled takes, ${tot_pnl:+,.2f} | "
           f"depth telemetry joined to {len(joined)} "
@@ -156,13 +194,24 @@ def main():
               "fills, so this question cannot be answered from the ledgers")
         return
     cov_pnl = sum(o["pnl"] for o, _, _ in joined)
+    ts_all = sorted(o["ts"] for o, _, _ in joined)
+    import time as _t
+    print(f"joined takes span "
+          f"{_t.strftime('%m-%d', _t.gmtime(ts_all[0]))} -> "
+          f"{_t.strftime('%m-%d', _t.gmtime(ts_all[-1]))} UTC "
+          f"(the depth tap was added 07-31; nothing before it is covered)")
+    if tot_pnl and abs(cov_pnl) < 0.5 * abs(tot_pnl):
+        print(f"*** PnL COVERAGE IS THE REAL LIMIT: the joined takes carry "
+              f"${cov_pnl:+,.2f}\n    of a ${tot_pnl:+,.2f} record. This audit "
+              f"says NOTHING about the\n    ${tot_pnl-cov_pnl:+,.2f} earned "
+              f"outside the telemetry window. ***")
     print(f"those {len(joined)} takes carry ${cov_pnl:+,.2f} of it"
           + ("" if len(joined) >= 0.6 * tot_orders else
              "\nCOVERAGE IS LOW — the rest predate the telemetry and this "
              "audit says nothing about them") + "\n")
 
-    coll = [j for j in joined if j[1] - j[2] >= DROP]
-    clean = [j for j in joined if j[1] - j[2] < DROP]
+    coll = [j for j in joined if j[1][0][0] - j[2] >= DROP]
+    clean = [j for j in joined if j[1][0][0] - j[2] < DROP]
 
     # ---------------- the assumption-free number: do collapses win less? ----
     print(f"DID THE BOOK KNOW SOMETHING?  (collapse = ask fell >= {DROP:.2f} "
@@ -178,7 +227,7 @@ def main():
         lo, hi = wilson(k, n)
         sz = sum(o["sz"] for o, _, _ in grp)
         paid = sum(o["px"] * o["sz"] for o, _, _ in grp) / sz
-        seen = sum(p * o["sz"] for o, p, _ in grp) / sz
+        seen = sum(p[0][0] * o["sz"] for o, p, _ in grp) / sz
         print(f"{lab:>10} {n:>6} {sz:>8.0f} {100*k/n:>5.0f}% "
               f"[{100*lo:>4.0f},{100*hi:>4.0f}]% {paid:>9.3f} {seen:>9.3f} "
               f"{sum(o['pnl'] for o, _, _ in grp):>+11.2f}")
@@ -190,16 +239,41 @@ def main():
         print("  price is the smaller half of the problem. Near zero => the")
         print("  drop is noise, and the cheap price was partly real.")
 
+    # -------------------------------- the same question, either side of the
+    # rule change. The "book watches the tape, we settle on chainlink" story
+    # predicts collapses were INFORMATIVE FOR US before 08-07 and against us
+    # after, when the book started tracking the TWAP. Split it and see.
+    print(f"\nSPLIT AT THE 08-07 CUTOVER — the prediction only ever applied "
+          f"to the left column")
+    print(f"{'era':>22} {'collapse n':>11} {'won%':>6} {'clean n':>8} "
+          f"{'won%':>6} {'gap':>7}")
+    for lab, lo_t, hi_t in (("pre-change (to 08-07)", 0, CUTOVER),
+                            ("post-change", CUTOVER, 1 << 62)):
+        c = [j for j in coll if lo_t <= j[0]["ts"] < hi_t]
+        cl = [j for j in clean if lo_t <= j[0]["ts"] < hi_t]
+        if not c or not cl:
+            print(f"{lab:>22} {len(c):>11} {'-':>6} {len(cl):>8} {'-':>6} "
+                  f"{'(too few)':>7}")
+            continue
+        kc = sum(1 for o, _, _ in c if o["settle"] == 1.0) / len(c)
+        kl = sum(1 for o, _, _ in cl if o["settle"] == 1.0) / len(cl)
+        print(f"{lab:>22} {len(c):>11} {100*kc:>5.0f}% {len(cl):>8} "
+              f"{100*kl:>5.0f}% {100*(kc-kl):>+6.0f}p")
+
     # ------------------------------------------------ the counterfactuals ---
     def rescore(grp, price_of):
         t = 0.0
         for o, pre, post in grp:
             p = price_of(o, pre, post)
+            if p is None:
+                p = o["px"]
             t += (o["settle"] - p) * o["sz"] - fee_of(p, o["sz"])
         return t
 
+    at_px = lambda o, pre, post: sweep(pre, o["sz"])
+
     rec = sum(o["pnl"] for o, _, _ in joined)
-    at_signal = rescore(joined, lambda o, pre, post: pre)
+    at_signal = rescore(joined, at_px)
     dropped = sum(o["pnl"] for o in (j[0] for j in clean))
     print(f"\nWHAT THE RECORD IS WORTH UNDER EACH ASSUMPTION "
           f"(the {len(joined)} joined takes only)")
@@ -220,11 +294,11 @@ def main():
         sel = [j for j in joined if a <= j[0]["px"] < b]
         if not sel:
             continue
-        c = [j for j in sel if j[1] - j[2] >= DROP]
+        c = [j for j in sel if j[1][0][0] - j[2] >= DROP]
         print(f"{f'{a:.2f}-{b:.2f}':>12} {len(sel):>6} "
               f"{sum(o['sz'] for o, _, _ in sel):>8.0f} "
               f"{sum(o['pnl'] for o, _, _ in sel):>+11.2f} "
-              f"{rescore(sel, lambda o, pre, post: pre):>+11.2f} "
+              f"{rescore(sel, at_px):>+11.2f} "
               f"{f'{len(c)} takes':>18}")
     print("\nIf the cheap buckets hold up under AT SIGNAL, the record is not a")
     print("latency artifact and the collapse path is a detail. If they only")
