@@ -84,11 +84,21 @@ class PreopenStrategy:
         n = self.cfg.oracle_twap_s
         if not n:
             return None
-        s = self.oracle.price_at(int(open_s - lead), exact=False, tolerance=3)
+        t0 = int(open_s - lead)
+        s = self.oracle.price_at(t0, exact=False, tolerance=3)
         if not s or s <= 0:
             return None
+        # HOW STALE IS THE PRICE WE ARE PRICING OFF? price_at falls back up to
+        # three seconds, and a bot that has only received through T-6 computes
+        # the tilt from a print three seconds older than the archive holds.
+        # Sign agreement is 98.9% at T-3 and 82.6% at T-10, so this is the
+        # number that explains a live/archive divergence — recorded rather
+        # than inferred, because eth's live tilt differs from the archive's by
+        # a median 1.02bp against a 1.0bp gate while btc's differs by 0.08bp.
+        age = next((b for b in range(0, 4) if (t0 - b) in self.oracle.samples),
+                   None)
         k, n_present, n_elapsed = self.oracle.twap_carry(
-            open_s, n, int(open_s - lead), tail=s)
+            open_s, n, t0, tail=s)
         if k is None or k <= 0 or n_elapsed <= 0:
             return None
         # n_present is 0 for a feed blackout — 6.5% of btc windows and 10.1%
@@ -96,7 +106,7 @@ class PreopenStrategy:
         # refuse, however good the carry looks.
         if n_present < n_elapsed * self.cfg.preopen_min_coverage:
             return None
-        return (s - k) / k * 1e4, s, k
+        return (s - k) / k * 1e4, s, k, n_present, n_elapsed, age
 
     # ------------------------------------------------------------------
     async def run(self):
@@ -140,7 +150,7 @@ class PreopenStrategy:
         t = self._tilt(wts, self.cfg.preopen_lead_s)
         if t is None:
             return self._skip("no_grid", wts)
-        tilt, s, k = t
+        tilt, s, k, n_present, n_elapsed, age = t
         if abs(tilt) < self.cfg.preopen_tilt_min_bp:
             return self._skip("flat_tilt", wts, f"{tilt:+.2f}bp < "
                               f"{self.cfg.preopen_tilt_min_bp}bp")
@@ -171,11 +181,17 @@ class PreopenStrategy:
                                peak=None, peak_t=None, low=None, low_t=None,
                                first=None, hit={}, n=0)
         log.info("w%s PREOPEN %s x%.0f @ %.3f (tilt %+.2fbp, spot %.2f "
-                 "strike %.2f)", wts, side, order.filled, order.price, tilt, s, k)
+                 "strike %.2f, grid %d/%d, spot age %ss)", wts, side,
+                 order.filled, order.price, tilt, s, k, n_present, n_elapsed,
+                 age if age is not None else "?")
         self.ledger.event("preopen_entry", json.dumps(
             {"w": wts, "side": side, "tilt": round(tilt, 3),
              "px": round(order.price, 4), "sz": round(order.filled, 1),
-             "lead": self.cfg.preopen_lead_s}, separators=(",", ":")))
+             "lead": self.cfg.preopen_lead_s,
+             # what the bot could SEE when it decided — the only thing that
+             # can differ from the archive once the maths is proven identical
+             "cov": n_present, "el": n_elapsed, "age": age},
+            separators=(",", ":")))
         return True
 
     def _track(self, wts, info, now):

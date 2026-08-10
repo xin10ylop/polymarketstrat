@@ -78,20 +78,34 @@ def main():
     strat = PreopenStrategy(CFG, None, o, None, None, None, None)
 
     lead = CFG.preopen_lead_s
+    # CFG reflects THIS shell's environment, not the systemd unit's, so the
+    # gate has to be passed in or it silently reports the 1.0 default while
+    # the btc 5m unit actually runs 0.5 — which is the denominator for every
+    # "fraction of the gate" judgement below.
+    gate = float(os.environ.get("GATE", CFG.preopen_tilt_min_bp))
     print(f"{COIN}: {len(live)} live entries vs the archive, "
-          f"lead {lead:g}s, gate {CFG.preopen_tilt_min_bp}bp, "
-          f"coverage floor {CFG.preopen_min_coverage}\n")
+          f"lead {lead:g}s, strike {NSEC}s, gate {gate}bp "
+          f"(pass GATE= to match the unit), floor {CFG.preopen_min_coverage}\n")
     print(f"{'window':>12} {'live tilt':>10} {'archive':>10} {'diff':>8} "
-          f"{'sign':>6} {'live side':>10}")
-    diffs, flips, missing = [], 0, 0
+          f"{'sign':>6} {'bot saw':>9} {'age':>4} {'side':>6}")
+    diffs, flips, missing, ages, covs = [], 0, 0, [], []
     for j in sorted(live, key=lambda x: x["w"]):
         w = int(j["w"])
         lt = float(j["tilt"])
+        # cov/el/age exist only on entries written after this telemetry
+        # shipped; older rows show '-' rather than a fabricated zero
+        cov = (f"{j['cov']}/{j['el']}" if "cov" in j and "el" in j else "-")
+        age = j.get("age")
+        if "cov" in j and "el" in j and j["el"]:
+            covs.append(j["cov"] / j["el"])
+        if age is not None:
+            ages.append(age)
         r = strat._tilt(w, lead)
         if r is None:
             missing += 1
             print(f"{w:>12} {lt:>+9.2f}b {'refused':>10} {'':>8} {'':>6} "
-                  f"{j.get('side',''):>10}")
+                  f"{cov:>9} {'-' if age is None else age:>4} "
+                  f"{j.get('side',''):>6}")
             continue
         at = r[0]
         d = at - lt
@@ -99,7 +113,8 @@ def main():
         flips += (not same)
         diffs.append(abs(d))
         print(f"{w:>12} {lt:>+9.2f}b {at:>+9.2f}b {d:>+8.2f} "
-              f"{'ok' if same else 'FLIP':>6} {j.get('side',''):>10}")
+              f"{'ok' if same else 'FLIP':>6} {cov:>9} "
+              f"{'-' if age is None else age:>4} {j.get('side',''):>6}")
 
     n = len(diffs)
     print(f"\n{n} comparable, {missing} the archive itself cannot price")
@@ -109,9 +124,27 @@ def main():
           f"({100*(n-flips)/n:.1f}%)")
     print(f"median |difference| : {st.median(diffs):.3f}bp")
     print(f"worst |difference|  : {max(diffs):.3f}bp")
-    over = sum(1 for d in diffs if d > CFG.preopen_tilt_min_bp / 2)
-    print(f"differences above half the gate ({CFG.preopen_tilt_min_bp/2:.2f}bp)"
-          f": {over}/{n}")
+    over = sum(1 for d in diffs if d > gate / 2)
+    print(f"differences above half the gate ({gate/2:.2f}bp): {over}/{n}")
+    # THE NUMBER THAT DECIDES IT. A gate is only meaningful if the quantity it
+    # gates is known to better than the gate itself. Median error at 15% of
+    # the gate is a threshold doing its job; at 100% it is a coin flip wearing
+    # a threshold's clothes.
+    print(f"median error as a share of the gate: "
+          f"{100*st.median(diffs)/gate:.0f}%")
+    if ages:
+        print(f"\nWHAT THE BOT COULD SEE (n={len(ages)} entries carrying it)")
+        print(f"  spot print age at decision : median {st.median(ages):.0f}s, "
+              f"worst {max(ages)}s   (0 = the T-lead second itself)")
+        if covs:
+            print(f"  strike-window coverage     : median "
+                  f"{100*st.median(covs):.0f}%, worst {100*min(covs):.0f}%")
+        print("  A non-zero age IS the divergence: the bot priced the tilt")
+        print("  off a print that many seconds older than the archive holds.")
+    else:
+        print("\n(no entry carries spot-age telemetry yet — it ships with the")
+        print(" restart that added 'age'; older rows cannot say why they")
+        print(" differed, only that they did)")
 
     print()
     if flips:
@@ -122,7 +155,7 @@ def main():
         print("staler spot than the archive holds. Widening price_at's")
         print("tolerance would make it WORSE, not better; the fix is to")
         print("evaluate later or to require a fresher print.")
-    elif st.median(diffs) > CFG.preopen_tilt_min_bp / 4:
+    elif st.median(diffs) > gate / 4:
         print("NO FLIPS, but the tilts differ by an appreciable fraction of")
         print("the gate. The SIDE is the same, so the trades are the ones the")
         print("backtest priced; the gate is landing on a slightly different")

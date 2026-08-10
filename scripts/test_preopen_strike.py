@@ -225,6 +225,39 @@ check_true("no exit level was ever touched", not _bad["hit"])
 check_true("this is now distinguishable from a flat window",
            _bad["peak"] < 0.50, f"(peak {_bad['peak']} < entry 0.50)")
 
+print("\nthe bot records how stale its own view was")
+# eth's live tilt differs from the archive's by a median 1.02bp against a
+# 1.0bp gate, btc's by 0.08bp. With the maths proven identical the only
+# possible cause is what had ARRIVED, so the bot now records it.
+_o3 = _o = Oracle(CFG)
+_T = 1_000_000
+_N = CFG.oracle_twap_s
+_L = int(CFG.preopen_lead_s)
+
+
+def _tilt_with(latest):
+    """_tilt on a complete grid whose NEWEST print is T-latest — i.e. a feed
+    that has delivered everything up to that second and nothing after."""
+    o = Oracle(CFG)
+    o.samples = {s: 100.0 for s in range(_T - _N - 5, _T - latest + 1)}
+    o.samples[_T - latest] = 100.5               # the newest print moved
+    o.last_sample_s = max(o.samples)
+    return PreopenStrategy(CFG, None, o, None, None, None, None)._tilt(_T, _L)
+
+
+_r = _tilt_with(_L)                               # current: T-3 has arrived
+check("a current feed reports spot age 0", _r[5], 0)
+check_true("and full coverage", _r[3] == _r[4], f"({_r[3]}/{_r[4]})")
+_r = _tilt_with(_L + 3)                           # newest print is T-6
+check("three seconds behind reports age 3", _r[5], 3)
+# age counts back from T-lead; coverage counts seconds INSIDE [T-N, T-lead),
+# which ends one second earlier. Three seconds of staleness therefore costs
+# two elapsed seconds, not three — they are different windows, not a bug.
+check_true("coverage is short by two, one fewer than the age",
+           _r[4] - _r[3] == 2, f"({_r[3]}/{_r[4]}, age {_r[5]})")
+check("beyond price_at's 3s reach it refuses outright",
+      _tilt_with(_L + 4), None)
+
 print("\nthe live bot and the backtest are the same function")
 # Two implementations of one signal is two chances to be wrong, and a live
 # win rate below the backtest's is unreadable until they are known equal:
