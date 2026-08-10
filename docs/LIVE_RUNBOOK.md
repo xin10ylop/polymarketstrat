@@ -1631,3 +1631,54 @@ them in that order.
   because the striking fact here is not fill fidelity — it is that the
   record appears to have stopped being made BEFORE the rule change, which
   would mean 08-07 is not the explanation for the drought.
+
+- 2026-08-10 THE RECORD IS FOUR DAYS. This is the most important number
+  produced this week and it reframes the whole month.
+  Whole fleet, 291 settled takes over 19 trading days, +$3,199.13:
+      07-31   30 takes  +1,604.83
+      07-29   21 takes    +928.89
+      07-30    9 takes    +511.73
+      07-23    8 takes    +478.60
+      -------------------------------------------------------------
+      68 takes (23% of all takes)  +3,524.05  =  110% of the record
+      the other 223 takes, 15 days:  -$324.92
+  One day, 07-31, is half of it. Peak equity +$4,044.26 on 08-01; the fleet
+  is -$845.13 since.
+  AND THE SLIDE STARTS 08-02, FIVE DAYS BEFORE THE RULE CHANGE:
+      08-02 .. 08-06 (pre-change)   -$197.46 over 5 days
+      08-07 .. 08-09 (post-change)  -$647.67 over 3 days
+  The post-change days are worse per day, but a large part of that is our
+  own doing — 08-07 ran the un-migrated oracle against the new rule and
+  08-09 includes the $85.89 spot-vs-TWAP unit mismatch. Strip our bugs and
+  the venue is not the story. The strategy stopped making money BEFORE
+  Polymarket changed anything.
+  I HAVE SPENT THIS WEEK EXPLAINING THE WRONG DISCONTINUITY. Every study
+  since 08-07 was built on "it worked, then the rule changed, so find what
+  the rule change took away". The ledger says it stopped working on 08-02.
+  Worse, the thing being restored was 68 takes on four days. The earlier
+  audit already said this in another form — top 20 of 283 windows > 100% of
+  profit, day-block bootstrap 5th percentile $35/day — and I did not let it
+  change the goal. Four days is not evidence of an edge. It is consistent
+  with one, and equally consistent with a good week.
+  PARITY, RESOLVED FOR THE COVERED WINDOW AND IMMATERIAL THERE. With the
+  ladder-sweep fix, RECORDED -$438.00 vs AT SIGNAL -$480.44 on 185 takes:
+  live lies in a $42 band. The collapse path is real but small. The
+  "paper buys wreckage" concern is worth $42 here, not the record. It still
+  says nothing about the +$3,637 earned before the telemetry existed.
+  MY PREDICTION IS REFUTED ON ITS OWN GROUND. Split at the cutover, the
+  PRE-CHANGE slice — covered, and exactly the period the claim was about:
+      pre-change   collapse 15 takes 40% won | clean 159 takes 89% won
+  I predicted collapse fills would win MORE. They win 49 points less, on
+  the pre-change data. The DERIVATION was wrong: a 5c+ collapse in half a
+  second is a large real move both feeds see, not the sub-basis-point
+  disagreement the mechanism is about, so this was never the right test of
+  it. But I wrote the prediction, it failed, and the escape hatch is only
+  worth as much as the direct test — rescoring the old trades against the
+  Binance close, which flips +$2,536 to -$2,082 and still supports the
+  mechanism. One direct test for, one derived test against.
+  WHAT THIS CHANGES. Stop treating +$2,225 as a benchmark to restore; it is
+  four days. The open-tilt (+0.6 points against a 1.75-point fee) and AHL
+  momentum (+0.12) both died at the fee wall, and that wall is the real
+  constant here. The only remaining candidate whose edge could be
+  structurally large rather than statistically real is the Kalshi
+  KXBTC15M / Polymarket 15m pair: same rule, same clock, two resolvers.
