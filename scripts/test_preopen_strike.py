@@ -225,5 +225,38 @@ check_true("no exit level was ever touched", not _bad["hit"])
 check_true("this is now distinguishable from a flat window",
            _bad["peak"] < 0.50, f"(peak {_bad['peak']} < entry 0.50)")
 
+print("\nthe live bot and the backtest are the same function")
+# Two implementations of one signal is two chances to be wrong, and a live
+# win rate below the backtest's is unreadable until they are known equal:
+# only then is sample size a sufficient explanation for the gap.
+import random as _rnd                                    # noqa: E402
+from bot.feeds.oracle import Oracle as _Oracle           # noqa: E402
+from bot.scalp_backtest import tilt_at as _tilt_at       # noqa: E402
+
+_rnd.seed(17)
+_T0 = 1_786_100_000 - 1_786_100_000 % 300
+_g, _px = {}, 64000.0
+for _s in range(_T0, _T0 + 4 * 3600):
+    _px *= 1 + _rnd.gauss(0, 2e-5)
+    if _rnd.random() > 0.06:            # ~6% holes, as the real grid has
+        _g[_s] = _px
+_o = _Oracle(CFG)
+_o.samples, _o.last_sample_s = _g, max(_g)
+_s2 = PreopenStrategy(CFG, None, _o, None, None, None, None)
+
+_n = _worst = _mismatch = 0
+for _w in range(_T0 + 600, _T0 + 4 * 3600 - 600, 300):
+    _live = _s2._tilt(_w, CFG.preopen_lead_s)
+    _bt = _tilt_at(_g, _w)
+    if (_live is None) != (_bt is None):
+        _mismatch += 1
+    elif _live is not None:
+        _n += 1
+        _worst = max(_worst, abs(_live[0] - _bt[0]))
+check_true("both paths price the same windows", _mismatch == 0,
+           f"({_mismatch} disagreed on whether to refuse)")
+check_true("and return the same tilt", _worst < 1e-9,
+           f"(n={_n}, worst |diff| {_worst:.12f}bp)")
+
 print("\n" + ("ALL PASS" if not FAILED else f"{len(FAILED)} FAILED: {FAILED}"))
 raise SystemExit(1 if FAILED else 0)
