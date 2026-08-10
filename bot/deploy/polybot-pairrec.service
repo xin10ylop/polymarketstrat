@@ -1,0 +1,24 @@
+[Unit]
+Description=Polymarket/Kalshi 15m pair recorder - both books at the same instant
+After=network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=600
+StartLimitBurst=20
+
+[Service]
+Type=simple
+# measurement only: never trades, holds no exchange keys, touches no ledger.
+# Lowest CPU share on the box so it can never starve a money bot.
+CPUWeight=50
+WorkingDirectory=/opt/polymarketstrat
+Environment=PM_SLUG=btc-updown-15m-
+Environment=K_SERIES=KXBTC15M
+Environment=EVERY=20
+Environment=PAIR_DIR=/opt/polymarketstrat/bot/data/paircal
+ExecStart=/opt/polymarketstrat/venv/bin/python -m bot.pair_record
+Restart=always
+RestartSec=10
+MemoryMax=120M
+
+[Install]
+WantedBy=multi-user.target

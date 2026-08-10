@@ -1682,3 +1682,43 @@ them in that order.
   constant here. The only remaining candidate whose edge could be
   structurally large rather than statistically real is the Kalshi
   KXBTC15M / Polymarket 15m pair: same rule, same clock, two resolvers.
+
+- 2026-08-10 KALSHI PAIR: THE SETUP IS REAL, THE EDGE IS NOT DEMONSTRATED,
+  AND 1-MINUTE DATA CANNOT SETTLE IT.
+  CONFIRMED STRUCTURE. Kalshi KXBTC15M and Polymarket btc-updown-15m ask
+  the identical question — 60s average at close >= 60s average at open — on
+  the identical :00/:15/:30/:45 clock, settled on CF Benchmarks BRTI and
+  Chainlink respectively.
+  OUTCOME AGREEMENT, the number the whole idea rests on:
+      PRE-change  (different rules) 1308 windows  93.6% agree
+      POST-change (SAME rule)        291 windows  96.9% agree, 6/3 split
+  The rule alignment itself lifted agreement 93.6% -> 96.9%, which confirms
+  the rules really did converge. The 9 disagreements are symmetric within
+  noise, so a paired position pays exactly 1.00 in 97% of windows and the
+  mismatches cancel in expectation rather than bleed.
+  LIQUIDITY IS NOT THE PROBLEM. 800-1900 contracts quoted, 100k-400k
+  contracts traded per MINUTE. The volume=None in the markets listing is an
+  unpopulated field, not an empty market.
+  PRICED OFF HISTORY, 291 windows, both legs, both venues' fees at
+  0.07p(1-p), profit averaged within window then across windows so the unit
+  of independence is the WINDOW and not the quote:
+      candle-close pairing         1700 opps  +1.54c/pair  t=1.90  [-0.05,+3.14]
+      worst quote inside the minute 401 opps  +0.73c/pair  t=0.55  [-1.87,+3.33]
+  Neither significant. The conservative pass discards 76% of the
+  opportunities as timing artifacts, which is the finding: inside a single
+  minute Kalshi's ask moved 0.52 -> 0.31, so pairing a quote from one venue
+  with one from the other up to 60s away cannot distinguish a real
+  cross-venue gap from two prices sampled at different moments.
+  ALSO NOTE the raw payoff distribution was 64 zeros against 7 twos while
+  the outcome disagreements were 6 and 3. The cheap packages cluster in the
+  windows that break — the same adverse selection found everywhere else
+  this week. Any live version needs a rule that refuses the cheapest
+  packages, not one that seeks them.
+  NOT DEAD, NOT PROVEN, AND UNANSWERABLE FROM PUBLIC HISTORY. Neither venue
+  publishes sub-minute books retrospectively and it cannot be back-filled.
+  bot/pair_record.py samples both books at the same instant every 20s and
+  stores the round-trip time so the simultaneity of each sample is auditable
+  after the fact. Read-only, no keys, no ledger. This is the only remaining
+  candidate whose edge could be structurally large rather than
+  statistically real, and it is the same shape as the mechanism that
+  actually paid. Record first, decide later.
