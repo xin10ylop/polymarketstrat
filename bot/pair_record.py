@@ -86,8 +86,15 @@ def pm_tokens(wts):
 
 
 def k_ticker(close_ts):
-    """The Kalshi market closing at this instant, or None."""
-    r = get(f"{KB}/markets?series_ticker={K_SERIES}&limit=200&status=open")
+    """The Kalshi market closing at this instant, or None.
+
+    No status filter. Kalshi markets sit as `initialized` and only flip to
+    `open` partway into their window — filtering on status=open here meant
+    the lookup returned nothing at the window boundary, and since the
+    result was cached for the whole window the recorder logged one sample
+    in nine hours.
+    """
+    r = get(f"{KB}/markets?series_ticker={K_SERIES}&limit=200")
     for m in ((r or {}).get("markets") or []):
         ct = m.get("close_time") or ""
         try:
@@ -136,17 +143,29 @@ def main():
     db = db_open()
     print(f"pair recorder: {PM_SLUG}* vs {K_SERIES}, every {EVERY:.0f}s -> "
           f"{OUT_DIR}/pair_15m.db", flush=True)
-    cur, toks, tick, nxt = None, None, None, 0.0
+    cur, toks, tick, nxt, retry = None, None, None, 0.0, 0.0
     while True:
         now = time.time()
         wts = int(now - now % WINDOW)
         if wts != cur:
-            cur, nxt = wts, 0.0
-            toks = pm_tokens(wts)
-            tick = k_ticker(wts + WINDOW)
-            n = db.execute("SELECT COUNT(*) FROM pair").fetchone()[0]
-            print(f"w{wts} pm={'ok' if toks and all(toks) else 'MISSING'} "
-                  f"kalshi={tick or 'MISSING'} (rows={n})", flush=True)
+            cur, nxt, toks, tick, retry = wts, 0.0, None, None, 0.0
+        # keep retrying a failed lookup INSIDE the window instead of writing
+        # the window off — either venue can be briefly unresolvable at the
+        # boundary, and caching that failure costs the whole window
+        if (toks is None or not all(toks) or tick is None) and now >= retry:
+            retry = now + 20
+            if toks is None or not all(toks):
+                toks = pm_tokens(wts)
+            if tick is None:
+                tick = k_ticker(wts + WINDOW)
+            if toks and all(toks) and tick:
+                n = db.execute("SELECT COUNT(*) FROM pair").fetchone()[0]
+                print(f"w{wts} both venues resolved, kalshi={tick} "
+                      f"(rows={n})", flush=True)
+            elif now - wts > 120:
+                print(f"w{wts} still unresolved: "
+                      f"pm={'ok' if toks and all(toks) else 'MISSING'} "
+                      f"kalshi={tick or 'MISSING'}", flush=True)
         if now >= nxt and toks and all(toks) and tick:
             nxt = now + EVERY
             t0 = time.time()

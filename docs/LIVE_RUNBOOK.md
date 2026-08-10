@@ -1783,3 +1783,26 @@ them in that order.
   read as 40 bets and produced a $10k/day figure from synthetic data. It
   now sizes at one package per WINDOW. The same mistake in the significance
   test is what the window-level averaging already guards against.
+
+- 2026-08-10 PAIR RECORDER LOGGED 1 SAMPLE IN 9.5 HOURS. MY BUG, AGAIN, AND
+  THE SAME SHAPE AS THE LAST ONE. k_ticker() queried Kalshi with
+  status=open. Kalshi markets sit as `initialized` and only flip to `open`
+  partway into their window, so at the window boundary — which is exactly
+  when the recorder looks — the lookup returned nothing. That None was then
+  cached for the whole window, so one failed lookup cost 45 samples.
+  FIXED: no status filter (verified live — resolves the current and next two
+  windows), and a failed lookup is now RETRIED every 20s inside the window
+  instead of writing the window off. Same class of fault as the book
+  recorder yesterday: a value fetched once at a boundary, cached, and never
+  re-checked. Both are now retry-on-failure.
+  THE PROCESS LESSON, TWICE IN TWO DAYS: a recorder that is `active` is not
+  a recorder that is recording. systemctl said active for 9.5 hours while
+  the table gained one row. Every recorder change from here gets a row-count
+  check one window later, not a status check.
+
+- 2026-08-10 THE BOOK RECORDERS ARE BACK AND THE OPEN IS FINALLY CAPTURED.
+  After the schema migration both 5m units are writing. Leads 298/285/270 —
+  T+2, T+15, T+30 — hold 228-230 rows each, roughly 114 windows, where they
+  had zero. That is the measurement this whole line of work has been waiting
+  on and it could not be back-filled. bot/price_curve.py now has real book
+  data at the open for the first time.
