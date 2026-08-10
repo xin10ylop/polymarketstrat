@@ -1455,3 +1455,63 @@ them in that order.
   bot/data/paper.db and exited. It now discovers every unit ledger under
   bot/data/*/paper.db, prints per-unit coverage, and pools. The prediction
   recorded before it runs stands unchanged.
+
+- 2026-08-10 THE AHL MOMENTUM SIGNAL DOES NOT WORK HERE — AND THE REASON
+  GENERALISES. Owner brought a ManAHL multi-horizon trend strategy: score =
+  sum of sign(close - close[n]) over four lookbacks, position scaled by
+  1/vol. Adapted faithfully to the btc 5m binary (lookbacks in 5m BARS, so
+  the lookback-to-hold ratio matches the daily original) and tested on 21
+  days of 1s data, 6,006 windows:
+      score  n     mean fwd move   t      P(up)
+        -4  1246      +0.021bp   +0.08   51.6%
+        +4  1277      -0.233bp   -0.95   47.1%
+      regression: -0.028bp per point of score, t = -0.77
+  The binary version: the score's side wins 49.6% [48.2, 51.0] over 4,861
+  windows. Vol-scaled strongest quartile 51.4%. Nothing.
+  SWEPT 8 lookback sets x 2 directions x 2 coins with a train/test split.
+  Best pooled |t| in 32 cells = 1.66 (eth reversal), and no cell clears 52%
+  in BOTH halves. Momentum is dead here and so is its mirror.
+  THE ARITHMETIC THAT KILLS IT, and it applies to every weak signal anyone
+  brings to this market: AHL's annual Sharpe of ~1 is 0.0031 per 5m window,
+  which as a binary win rate is +0.12 percentage points. The taker fee at
+  0.50 is 1.75 points. You need 14x their edge to break even. They hold for
+  weeks and pay the toll a few times a month; a 5m binary pays it 288 times
+  a day. NOTHING with a weak directional edge can ever clear that bar here.
+  Only two shapes can: near-certainty at a high price where the fee is
+  0.07-0.20 points, or a LARGE mispricing at a middling price.
+
+- 2026-08-10 BUT THE OTHER HALF OF AHL'S RULE IS THE BEST RESULT SINCE THE
+  CUTOVER. "Position = signal / vol" is not a forecast, it is a statement
+  about what a signal is WORTH, and that transfers exactly. The opening
+  tilt is a distance in basis points; its value is that distance in
+  standard deviations. Identical only if vol is constant, and it is not.
+  ESTABLISHED FIRST ON THE LARGE SAMPLE (6,000 windows/coin), which is the
+  right order — mechanism before pricing. Ranking by |tilt|/vol beat
+  ranking by |tilt| in 8 of 8 matched slices across both coins. Same tilt
+  in bp, split by regime:
+      btc  calm third 66.3%  middle 60.5%  wild third 56.0%
+      eth  calm third 61.9%  middle 58.4%  wild third 56.2%
+  THEN PRICED against real Polymarket quotes, Aug 7-10, 847 windows/coin:
+      btc  by raw |tilt|   top 5%  69.0% at 0.584 -> +8.93c  [lo -6.14c]
+      btc  by |tilt|/vol   top 5%  83.3% at 0.637 -> +17.97c [lo +4.03c]
+      btc  by |tilt|/vol   top 10% 75.0% at 0.608 -> +12.49c [lo +2.27c]
+      eth  by |tilt|/vol   top 5%  73.8% at 0.581 -> +13.96c [lo -0.92c]
+  Two btc slices with a POSITIVE 95% lower bound. First time since the rule
+  change that anything has cleared that bar.
+  AND THE MECHANISM IS STRUCTURAL, not a slice. Regressing the book's quote
+  and the realised outcome on tilt, split by vol regime:
+      btc calm  book +0.0975/bp  true +0.2342/bp  -> book pays 42%
+      btc wild  book +0.0320/bp  true +0.0480/bp  -> book pays 67%
+      eth calm  book +0.0368/bp  true +0.0742/bp  -> book pays 50%
+      eth wild  book +0.0144/bp  true +0.0094/bp  -> book pays 154%
+  The book DOES move more per bp when calm (0.0975 vs 0.0320) — it is not
+  blind — but it under-adjusts, and the shortfall is concentrated exactly
+  where the tilt is large relative to vol. That is an anchoring error on a
+  fixed bp-to-probability mapping, and it is the precise error AHL's rule
+  is built to harvest.
+  CAVEATS THAT KEEP THIS A LEAD. n=42 and n=84 on the priced slices. The
+  tilt here is measured on BINANCE, which is 3.6x noisier than the oracle
+  grid, so this UNDERSTATES — but it is still the wrong feed. The ask is
+  mid + 0.005, assumed. Four slice sizes x two rankings were examined.
+  bot/vol_tilt.py reruns all of it on the real Chainlink grid. NO BOT
+  CHANGE until that confirms and a second disjoint day agrees.
