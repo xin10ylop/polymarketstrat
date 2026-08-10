@@ -154,6 +154,36 @@ def main():
               f"{pct(strict, len(opens)):>9.1f}% "
               f"{max(imputed) if imputed else 0:>12}")
 
+    # ------------------------------------------------------ 4. floor sweep
+    # grid_holes showed the picked side is unchanged from the complete-grid
+    # call at 21-24 of 27 seconds (84/84 btc, 47/47 eth) — the exact region
+    # the 0.9 floor refuses. So the floor is a free parameter and this is
+    # what each setting costs, at the lag we actually run at.
+    print("\n4. WHAT EACH COVERAGE FLOOR REFUSES")
+    print("   'blackout' = no print at all in the range; those must always")
+    print("   refuse and no floor can recover them.")
+    print(f"   {'floor':>6} {'needs':>7}" +
+          "".join(f"{f'lag {L}':>8}" for L in LAGS) + f"{'blackout':>10}")
+    for fl in [float(x) for x in
+               os.environ.get("FLOORS", "0.9,0.8,0.75,0.7,0.6").split(",")]:
+        cells = []
+        for L in LAGS:
+            refused = 0
+            for t in opens:
+                horizon = t - edge - L
+                p = sum(1 for s in range(t - NSEC, min(t - edge, horizon + 1))
+                        if s in g)
+                spot = any((s in g) for s in range(t - edge - TOL,
+                                                   min(t - edge, horizon) + 1))
+                if not spot or p < n_el * fl:
+                    refused += 1
+            cells.append(pct(refused, len(opens)))
+        black = sum(1 for t in opens
+                    if not any((s in g) for s in range(t - NSEC, t - edge)))
+        print(f"   {fl:>6.2f} {n_el*fl:>7.1f}"
+              + "".join(f"{c:>7.1f}%" for c in cells)
+              + f"{pct(black, len(opens)):>9.1f}%")
+
     print("\nREAD IT LIKE THIS. If row 1 says the grid is essentially complete")
     print("and section 2 shows the refusal rate climbing with lag, then the")
     print("live no_grid is LAG and section 3 is the fix — it refuses only the")

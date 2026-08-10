@@ -149,6 +149,16 @@ class Config:
     preopen_clip: int = _env("PREOPEN_CLIP", 250, int)
     preopen_exit_c: float = _env("PREOPEN_EXIT_C", 0.05, float)
     preopen_mark_s: float = _env("PREOPEN_MARK_S", 15.0, float)
+    # The strike's own coverage floor, SEPARATE from oracle_twap_min_coverage
+    # because that one gates settlement and the snipe and must not move.
+    # 0.9 was a guess and it refused 23.1% of btc windows (24.9% eth). Punching
+    # real hole patterns into complete windows, the picked side is unchanged
+    # from the complete-grid call in 84/84 btc and 47/47 eth cases at 21-24 of
+    # 27 seconds — the exact region 0.9 was refusing. 0.75 recovers 96 of those
+    # 100 btc windows while still refusing every feed blackout (n_present=0,
+    # 6.5% of btc windows and 10.1% of eth) and leaving the two thinnest
+    # buckets, where the evidence is n=1, out of scope.
+    preopen_min_coverage: float = _env("PREOPEN_MIN_COVERAGE", 0.75, float)
     # ^ 0 = off. Jun-Jul reconstruction says deep (<=0.80) asks decayed to -EV,
     #   but live paper fills there still print +EV — let the paper ledger
     #   referee; flip to 0.90 if a week of deep fills bleeds (runbook item)

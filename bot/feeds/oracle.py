@@ -175,6 +175,66 @@ class Oracle:
         vals = [self.samples[s] for s in range(lo, hi) if s in self.samples]
         return sum(vals), len(vals), hi - lo
 
+    def twap_carry(self, close_s, n, upto_s, tail=None, lookback=120):
+        """The closing TWAP over [close_s-n, close_s) with holes CARRIED
+        FORWARD: every second with no print of its own takes the most recent
+        print at or before it. Returns (value, n_present, n_elapsed).
+
+        WHY THIS EXISTS, MEASURED. The 1s grid is not complete — 62.6% of btc
+        windows are missing at least one of the 27 seconds available at T-3,
+        median 26 of 27. twap_known reports only a SUM, so its caller can do
+        nothing with a hole but rescale the present seconds' mean across the
+        whole window. That fills the gap with the window AVERAGE when what
+        actually stood there was the price one second earlier, and over a
+        window with any drift those are different numbers.
+
+        Punching 377 real hole patterns into the 227 complete btc windows and
+        comparing against the complete-grid tilt: rescaling is off by 0.036bp
+        on average, carrying by 0.009bp — 4x, and 5.5x on eth (0.083 vs
+        0.015). In the worst bucket rescaling drifts 0.377bp against a 0.5bp
+        trading gate, which is enough to flip a marginal call on its own,
+        while carrying stays at 0.008bp.
+
+        (The mechanism is NOT what I guessed. I expected these to be
+        deduplicated no-change reports, which would make carrying trivially
+        correct. They are not: the price is identical across an isolated hole
+        0.7% of the time versus 0.4% across a present second, i.e. no
+        different. Carrying wins for a plainer reason — the print one second
+        back is a local estimate and the window mean is a global one.)
+
+        Reaches BACKWARD only, never forward, so nothing here can see a price
+        that did not exist at upto_s.
+
+        n_present counts seconds that had a print of their OWN in the elapsed
+        range; it is the honest coverage number to gate on, and it is 0 for a
+        feed blackout, which is the case that must always refuse.
+        """
+        lo = int(close_s) - n
+        hi = min(int(upto_s), int(close_s))       # exclusive
+        if hi <= lo:
+            return None, 0, 0
+        carry = None
+        for back in range(1, int(lookback) + 1):  # seed from before the window
+            if (lo - back) in self.samples:
+                carry = self.samples[lo - back]
+                break
+        total, n_present = 0.0, 0
+        for s in range(lo, hi):
+            v = self.samples.get(s)
+            if v is not None:
+                carry = v
+                n_present += 1
+            if carry is None:
+                return None, 0, hi - lo           # nothing to carry from yet
+            total += carry
+        if not n_present and tail is None:
+            return None, 0, hi - lo
+        # the not-yet-elapsed tail is the caller's latest print, the same
+        # imputation the elapsed holes just got
+        t = tail if tail is not None else carry
+        total += (int(close_s) - hi) * t
+        return total / n, n_present, hi - lo
+
     def staleness(self):
         return time.time() - self.last_rx if self.last_rx else float("inf")
 

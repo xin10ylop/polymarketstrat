@@ -71,8 +71,15 @@ class PreopenStrategy:
         """(tilt_bp, spot, strike) using ONLY what exists at open_s - lead.
 
         The strike is the mean over [T-N, T). At T-lead we have the first
-        N-lead seconds of it; the tail is imputed from the latest print,
-        which is exactly what a live bot can do. No lookahead.
+        N-lead seconds of it; holes inside those seconds carry forward from
+        the last print, and the not-yet-elapsed tail is imputed from the
+        latest print. Both reach backward only, so there is no lookahead.
+
+        Carrying rather than rescaling the present seconds' mean is worth 4x
+        on btc and 5.5x on eth in strike accuracy — see Oracle.twap_carry for
+        the measurement. It matters most exactly where it is least visible:
+        on a marginal window near the 0.5bp gate, where rescaling's worst
+        bucket drifts 0.377bp and can flip the side by itself.
         """
         n = self.cfg.oracle_twap_s
         if not n:
@@ -80,12 +87,14 @@ class PreopenStrategy:
         s = self.oracle.price_at(int(open_s - lead), exact=False, tolerance=3)
         if not s or s <= 0:
             return None
-        known_sum, n_present, n_elapsed = self.oracle.twap_known(
-            open_s, n, int(open_s - lead))
-        if n_elapsed <= 0 or n_present < n_elapsed * self.cfg.oracle_twap_min_coverage:
+        k, n_present, n_elapsed = self.oracle.twap_carry(
+            open_s, n, int(open_s - lead), tail=s)
+        if k is None or k <= 0 or n_elapsed <= 0:
             return None
-        k = (known_sum * (n_elapsed / n_present) + (n - n_elapsed) * s) / n
-        if k <= 0:
+        # n_present is 0 for a feed blackout — 6.5% of btc windows and 10.1%
+        # of eth have no print at all in this range — and that must always
+        # refuse, however good the carry looks.
+        if n_present < n_elapsed * self.cfg.preopen_min_coverage:
             return None
         return (s - k) / k * 1e4, s, k
 
