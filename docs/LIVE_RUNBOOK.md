@@ -1762,3 +1762,24 @@ them in that order.
   proxy result (+0.6 points of edge, inside the spread) and points the same
   way. T+15 and T+30 remain the only unmeasured leads, and given T+60 is
   -5.9c and T+120 is -10.6c, the prior on them should be low.
+
+- 2026-08-10 bot/pair_report.py added — the reader for the two-venue
+  recorder, which had been collecting with nothing able to read it.
+  Reports in two parts. First the GAP, which needs no outcomes and is
+  meaningful immediately: the cheapest package per sample with both venues'
+  fees, how often it prices under 1.00, and the size at the binding leg.
+  Second the REALISED profit, averaged within window before across windows,
+  with the payoff mix printed so the adverse-selection pattern from the
+  history run (64 zeros vs 7 twos against symmetric 3.1% feed disagreement)
+  is visible rather than buried in a mean.
+  MAX_DT drops samples whose two legs were further apart than the given
+  number of seconds; the recorder stores each sample's round-trip so
+  simultaneity is measured, not assumed. This is the whole reason the
+  recorder exists — the candle version could only pair quotes up to 60s
+  apart, and 76% of its opportunities disappeared once that was handled
+  honestly.
+  A SIZING ERROR CAUGHT IN THE SMOKE TEST: the $/day line first counted
+  every SAMPLE as a tradeable position, so 40 observations of one window
+  read as 40 bets and produced a $10k/day figure from synthetic data. It
+  now sizes at one package per WINDOW. The same mistake in the significance
+  test is what the window-level averaging already guards against.
