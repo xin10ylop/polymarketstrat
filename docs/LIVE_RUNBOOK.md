@@ -1832,3 +1832,42 @@ them in that order.
   prices (pm_up 0.79 vs kalshi yes 0.77-0.78, package 1.014 after fees, no
   gap at that instant). That check took one minute and would have caught
   the bug before it cost nine hours.
+
+- 2026-08-10 THE OPEN IS MEASURED. 227 windows, 21.1h, real book data at
+  T+2/T+15/T+30 for the first time. Quoted 100% at every open lead, which
+  matters methodologically: accuracy and price come from the SAME rows, so
+  unlike the late leads this EV is NOT an upper bound.
+      lead    n     hit     ask   needs      EV     EV lo
+      T+2   177   57.6%   0.563   58.0%   -0.42c   -7.76c
+      T+15  177   63.8%   0.602   61.9%   +1.92c   -5.34c
+      T+30  176   65.3%   0.624   64.0%   +1.26c   -5.99c
+      T+60  176   67.6%   0.687   70.2%   -2.61c   -9.82c
+      T+120 176   69.3%   0.766   77.9%   -8.55c  -15.70c
+  I PREDICTED T+15 AND T+30 WOULD BE NEGATIVE. They are mildly positive.
+  Recording that because the prediction was written down; the direction was
+  wrong even though the magnitude is inside the noise.
+  THE SHAPE IS CONSISTENT AND WORTH KEEPING: the book underprices the tilt
+  in the first half-minute and OVERPRICES it from T+60 on. By T+120 it is
+  charging 77.9% for a 69.3% event. Whatever edge exists lives in the first
+  30 seconds and is worth 1-2 points.
+  THE 0.50-0.70 BUCKET LOOKS BETTER AND IS NOT. Pooling that bucket across
+  the four open leads gives 145/220 = 65.9% at 0.579, +6.30c/share with a
+  lower bound of -0.19c. But those 220 rows are four leads over ~55 windows
+  — the same windows counted four times. At an effective n of 55 the lower
+  bound is -7.36c. Nothing established.
+  VERDICT UNCHANGED and now measured rather than assumed: the opening tilt
+  is real, it is worth 1-2 points, and the fee plus spread is 1.75. The
+  21-day proxy said +0.6 points; the real book at the real leads says +1.3
+  to +1.9. Same answer, better data. Not wiring it.
+
+- 2026-08-10 health.py EARNED ITS KEEP ON THE FIRST RUN — and had a bug.
+  CAUGHT: twapcal/sol_1s.db dead for 18.9 hours. Nothing else was watching
+  the SOL grid and nothing downstream had complained yet. That is exactly
+  the class of silent loss that cost two days this week.
+  CONFIRMED: the pair recorder is writing again after the ticker fix (29
+  rows in the last hour where it had managed one in 9.5 hours), and all
+  three book recorders are at their expected ~300-360 rows/h.
+  MY BUG IN IT: an empty bot ledger (snipe-doge, never traded) read DEAD.
+  Zero rows is broken for a RECORDER and normal for a ledger with no fills.
+  Fixed — only sources carrying a rate expectation can be dead from
+  emptiness.

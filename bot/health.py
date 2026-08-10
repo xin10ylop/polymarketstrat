@@ -59,9 +59,12 @@ def main():
                 worst = max(worst, 2)
                 continue
             if not n or last is None:
-                print(f"{label:>34} {n or 0:>9} {'never':>12} {0:>8} "
-                      f"{'DEAD':>8}")
-                worst = max(worst, 2)
+                # a bot ledger with no fills has never written and never
+                # will until it trades — that is idle, not broken. Only a
+                # RECORDER (one carrying a rate expectation) is dead here.
+                v, lvl = ("DEAD", 2) if expect else ("idle", 0)
+                print(f"{label:>34} {n or 0:>9} {'never':>12} {0:>8} {v:>8}")
+                worst = max(worst, lvl)
                 continue
             age = now - last
             # a bot ledger with no fills is normal; a recorder with no rows
