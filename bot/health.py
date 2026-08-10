@@ -26,6 +26,12 @@ import time
 ROOT = os.environ.get("DATA_ROOT", "bot/data")
 WARN_S = float(os.environ.get("WARN_S", "300"))     # quiet this long = suspect
 DEAD_S = float(os.environ.get("DEAD_S", "900"))     # quiet this long = dead
+# A RATE OVER AN HOUR HIDES A BLACKOUT INSIDE IT. btc's 1s grid went to 9% of
+# its normal rate for ~18 minutes under memory pressure and this check said
+# `ok`, because the hour containing that hole still averaged 54% — above the
+# 40% THIN line. The hole is what makes a window untradeable and unanalysable,
+# so the largest gap is checked directly rather than inferred from a mean.
+GAP_S = float(os.environ.get("GAP_S", "300"))
 
 # (glob, table, timestamp column, rough rows/hour when healthy)
 SOURCES = [
@@ -42,7 +48,7 @@ SOURCES = [
 def main():
     now = time.time()
     print(f"{'source':>34} {'rows':>9} {'last write':>12} {'last 1h':>8} "
-          f"{'verdict':>8}")
+          f"{'max gap':>8} {'verdict':>8}")
     worst = 0
     seen = False
     for pattern, table, tscol, expect in SOURCES:
@@ -56,6 +62,15 @@ def main():
                 hr = db.execute(
                     f"SELECT COUNT(*) FROM {table} WHERE {tscol} > ?",
                     (now - 3600,)).fetchone()[0]
+                gap = 0.0
+                if expect:
+                    ts = [r[0] for r in db.execute(
+                        f"SELECT {tscol} FROM {table} WHERE {tscol} > ? "
+                        f"ORDER BY {tscol}", (now - 3600,))]
+                    for i in range(len(ts) - 1):
+                        gap = max(gap, ts[i + 1] - ts[i])
+                    if ts:
+                        gap = max(gap, now - ts[-1])   # the gap still open
             except Exception as e:  # noqa: BLE001
                 print(f"{label:>34} {'-':>9} {'UNREADABLE':>12} {'-':>8} "
                       f"{'DEAD':>8}   {str(e)[:44]}")
@@ -85,12 +100,16 @@ def main():
                 v, lvl = "STALE", 1
             elif hr < 0.4 * expect:
                 v, lvl = "THIN", 1
+            elif gap > GAP_S:
+                v, lvl = "GAPPY", 1
             else:
                 v, lvl = "ok", 0
             worst = max(worst, lvl)
             ago = (f"{age:.0f}s" if age < 120 else
                    f"{age/60:.0f}m" if age < 7200 else f"{age/3600:.1f}h")
-            print(f"{label:>34} {n:>9} {ago:>12} {hr:>8} {v:>8}"
+            print(f"{label:>34} {n:>9} {ago:>12} {hr:>8} "
+                  + (f"{gap:>7.0f}s " if expect else f"{'-':>8} ")
+                  + f"{v:>8}"
                   + (f"   (expect ~{expect}/h)" if expect and lvl else ""))
     if not seen:
         print(f"  no databases found under {ROOT}")
@@ -98,6 +117,9 @@ def main():
     print("\nDEAD = nothing written in "
           f"{DEAD_S/60:.0f}m. THIN = writing, but well under the expected")
     print("rate — that is the shape a partly-broken recorder makes.")
+    print(f"GAPPY = wrote nothing for over {GAP_S/60:.0f}m at some point in the")
+    print("last hour, even though the hourly TOTAL looked acceptable. That is")
+    print("the shape a blackout makes, and an average cannot see it.")
     print("A bot ledger showing 'idle' just means no fills, which is normal.")
     if worst == 0:
         print("\nALL SOURCES WRITING.")
