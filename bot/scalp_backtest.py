@@ -51,8 +51,13 @@ GATE = float(os.environ.get("GATE", "0.5"))
 COVER = float(os.environ.get("COVER", "0.75"))
 HOURS = float(os.environ.get("HOURS", "0"))          # 0 = the whole grid span
 EXITS = [float(x) for x in os.environ.get(
-    "EXITS", "0.01,0.02,0.03,0.04,0.05,0.07,0.10,0.15").split(",")]
+    "EXITS", "0.02,0.05,0.07,0.10,0.15,0.20,0.25,0.30,0.35,0.40").split(",")]
 BY = [float(x) for x in os.environ.get("BY", "5,15,30,60,300").split(",")]
+# how far before the open to read the entry price off the tape. The bot takes
+# the ask at T-3; the tape's nearest equivalent is what takers paid just
+# before that, and the sensitivity of the result to this window is reported
+# rather than assumed.
+ENTRY_WIN = int(os.environ.get("ENTRY_WIN", "60"))
 CACHE = os.environ.get("TAPE_DIR", "bot/data/tape")
 WORKERS = int(os.environ.get("WORKERS", "6"))
 HDRS = {"User-Agent": "Mozilla/5.0"}
@@ -72,6 +77,47 @@ def wilson(k, n):
     c = (p + z * z / (2 * n)) / d
     h = z * ((p * (1 - p) / n + z * z / (4 * n * n)) ** 0.5) / d
     return (max(0.0, c - h), min(1.0, c + h))
+
+
+def autocorr(v):
+    """Lag-1 autocorrelation. Consecutive windows are NOT independent — the
+    tilt is spot minus a trailing mean, so a sustained move puts the same sign
+    on several windows in a row, and bot/tilt_cluster.py measured a lag-1 of
+    +0.126 on the win indicator. An interval computed as if they were
+    independent is too tight."""
+    n = len(v)
+    if n < 4:
+        return 0.0
+    m = sum(v) / n
+    den = sum((x - m) ** 2 for x in v)
+    if den <= 0:
+        return 0.0
+    return sum((v[i] - m) * (v[i + 1] - m) for i in range(n - 1)) / den
+
+
+def band(pnl):
+    """(mean, lower, upper, n_eff) on a per-window P&L series, in cents.
+
+    A t-style interval on the P&L itself rather than a Wilson interval on a
+    win rate: the strategies being compared do not all HAVE a win rate (a
+    filled limit pays a fixed amount regardless of the outcome), and putting
+    every candidate on the same footing is the only way the comparison means
+    anything. n_eff discounts the sample for autocorrelation.
+    """
+    n = len(pnl)
+    if n < 4:
+        return (0.0, -1e9, 1e9, 0)
+    m = sum(pnl) / n
+    var = sum((x - m) ** 2 for x in pnl) / (n - 1)
+    r = autocorr(pnl)
+    n_eff = max(4.0, n * (1 - r) / (1 + r)) if r > -0.99 else n
+    # NEVER claim more precision than the raw sample. Negative autocorrelation
+    # makes the formula return n_eff > n, which is real but is not something
+    # to bank on from one 40-hour window; capping keeps every band at or wider
+    # than the independent one.
+    n_eff = min(n_eff, float(n))
+    se = (var / n_eff) ** 0.5
+    return (m, m - 1.96 * se, m + 1.96 * se, n_eff)
 
 
 def _get(url, tries=4):
@@ -228,9 +274,12 @@ def main():
 
     tape = load_tape(sorted(picks))
     rows = []
-    for w, (winner, prints) in tape.items():
-        if w not in picks:
+    drop = {"no pre-open prints": 0, "entry out of range": 0, "no tape": 0}
+    for w in sorted(picks):
+        if w not in tape:
+            drop["no tape"] += 1
             continue
+        winner, prints = tape[w]
         tilt, pick = picks[w]
         # our side's prints: normalised to UP, so flip for a down pick
         pr = [(t, s, p if pick == "up" else 1.0 - p, z)
@@ -239,27 +288,74 @@ def main():
             pr = [(t, "SELL" if s == "BUY" else "BUY", p, z)
                   for (t, s, p, z) in pr]
         # ENTRY: what a taker paid on our side just before the open
-        pre = [p for (t, s, p, z) in pr if -60 <= t < 0 and s == "BUY"]
+        pre = [p for (t, s, p, z) in pr if -ENTRY_WIN <= t < 0 and s == "BUY"]
+        near = [p for (t, s, p, z) in pr if -15 <= t < 0 and s == "BUY"]
         if not pre:
+            drop["no pre-open prints"] += 1
             continue
         entry = st.median(pre)
         if not (0.02 < entry < 0.98):
+            drop["entry out of range"] += 1
             continue
         # EXIT: a resting sell fills when someone BUYS our side at >= target
         buys = [(t, p, z) for (t, s, p, z) in pr if t >= 0 and s == "BUY"]
         rows.append(dict(w=w, tilt=tilt, pick=pick, entry=entry, buys=buys,
-                         won=(winner == pick)))
+                         won=(winner == pick),
+                         near=(st.median(near) if near else None)))
     if len(rows) < 20:
         raise SystemExit(f"only {len(rows)} windows joined tape+grid — "
                          "not enough to say anything")
 
-    span_h = (max(r["w"] for r in rows) - min(r["w"] for r in rows)) / 3600.0
+    rows.sort(key=lambda r: r["w"])
+    span_h = (rows[-1]["w"] - rows[0]["w"]) / 3600.0
     ent = st.median(r["entry"] for r in rows)
     held = sum(r["won"] for r in rows)
-    print(f"{len(rows)} windows with tape + grid + outcome over {span_h:.1f}h")
-    print(f"median pre-open entry {ent:.4f}  (fee {100*fee(ent):.2f}c)")
-    print(f"settles our way {100*held/len(rows):.1f}%  -> HOLD is "
-          f"{100*(held/len(rows) - ent - fee(ent)):+.2f}c/share\n")
+
+    # ------------------------------------------------------- 0. diagnostics
+    print("WHAT GOT DROPPED (a silent drop is a selection bias)")
+    for k, v in drop.items():
+        if v:
+            print(f"   {k:>22}: {v:>4} "
+                  f"({100*v/(len(rows)+sum(drop.values())):.0f}%)")
+    if not any(drop.values()):
+        print("   nothing")
+    print(f"   {'joined':>22}: {len(rows):>4}")
+
+    # entry sensitivity: does reading the tape closer to the open move it?
+    both = [r for r in rows if r["near"] is not None]
+    if both:
+        d = st.median(abs(r["near"] - r["entry"]) for r in both)
+        print(f"\nENTRY PRICE SENSITIVITY (median |entry| difference when read "
+              f"from the last 15s instead of {ENTRY_WIN}s): {100*d:.2f}c "
+              f"on {len(both)}/{len(rows)} windows")
+        if d > 0.01:
+            print("   >1c — the entry estimate is NOT stable and every EV "
+                  "below inherits that uncertainty")
+
+    # -------------------------------------------------- 1. invariant checks
+    # A winner settles at 1.00, so before the close it MUST trade above any
+    # target below that. Therefore at the full-window horizon the unfilled
+    # windows have to be ~100% losers, and fill% has to be >= win%. If either
+    # fails, the tape join is broken and nothing below can be trusted.
+    print("\nCONSISTENCY CHECKS (mechanical truths — a failure means a bug)")
+    fill300 = sum(1 for r in rows if any(
+        p >= r["entry"] + 0.15 - 1e-9 for t, p, _ in r["buys"]))
+    left300 = [r for r in rows if not any(
+        p >= r["entry"] + 0.15 - 1e-9 for t, p, _ in r["buys"])]
+    lw = sum(r["won"] for r in left300)
+    ok1 = fill300 >= held
+    ok2 = (lw == 0) if left300 else True
+    print(f"   fill% at +15c over the whole window >= win% : "
+          f"{fill300} >= {held}  [{'PASS' if ok1 else 'FAIL'}]")
+    print(f"   unfilled-at-close windows are all losers    : "
+          f"{lw}/{len(left300)} won  [{'PASS' if ok2 else 'FAIL'}]")
+    if not (ok1 and ok2):
+        print("   ^ STOP. The tape/outcome join is inconsistent.")
+
+    print(f"\n{len(rows)} windows with tape + grid + outcome over {span_h:.1f}h")
+    print(f"median pre-open entry {ent:.4f}  (fee {100*fee(ent):.2f}c, "
+          f"break-even {100*(ent+fee(ent)):.2f}%)")
+    print(f"settles our way {100*held/len(rows):.1f}%\n")
 
     # EVERY NUMBER BELOW IS BOUND TO A HORIZON, and the first version of this
     # tool was not. It collected prints from t>=0 with no upper bound, so its
@@ -284,32 +380,88 @@ def main():
               f"({100*bad/len(rows):>5.1f}%)"
               + ("   <- the scalp's real failure rate" if h == 15 else ""))
 
-    print("\nTHE SCALP: rest at +Xc, give up at T+H and hold to settlement")
-    print(f"{'exit':>5} {'by':>6} {'fill%':>7} {'med s':>7} {'left win%':>10} "
-          f"{'blend':>9} {'lo':>8} {'$/day':>9}")
-    best = []
+    # ---------------------------------------------- per-window P&L, in cents
+    # EVERY strategy is scored the same way: what one share made in that one
+    # window, using THAT window's entry price rather than the sample median.
+    def pnl_hold(r):
+        return 100.0 * ((1.0 if r["won"] else 0.0) - r["entry"] - fee(r["entry"]))
+
+    def pnl_limit(r, x, h):
+        """Rest a sell at entry+x. If it fills by h, that is the trade. If it
+        never fills, the position rides to settlement. h=inf is the user's
+        'leave the limit resting until resolution'."""
+        if touch(r, x, h) is not None:
+            return 100.0 * (x - fee(r["entry"]))   # maker exit: no exit fee
+        return pnl_hold(r)
+
+    def show(label, pnl, extra=""):
+        m, lo, hi, ne = band(pnl)
+        # m is in CENTS per share. Dollars per day = cents/100 * clip *
+        # windows-per-day. The first version omitted the /100 and printed
+        # $300k/day, which is the kind of number that should stop a reader
+        # cold rather than be read past.
+        per_day = (m / 100.0) * 250 * len(pnl) * 24.0 / span_h if span_h else 0.0
+        print(f"{label:>22} {m:>+8.2f}c [{lo:>+7.2f},{hi:>+7.2f}]c "
+              f"{ne:>6.0f} {per_day:>9.0f} {extra}")
+        return (m, lo, per_day)
+
+    hold_pnl = [pnl_hold(r) for r in rows]
+    print("\nEVERY STRATEGY, SAME WINDOWS, PER-WINDOW P&L PER SHARE")
+    print(f"{'strategy':>22} {'mean':>9} {'95% band':>18} {'n_eff':>6} "
+          f"{'$/day':>9}")
+    hold = show("HOLD to settlement", hold_pnl)
+
+    print("\n  -- rest the limit and LEAVE IT until resolution (your spec) --")
+    grid = []
     for x in EXITS:
-        for h in BY:
-            hits = [touch(r, x, h) for r in rows]
-            fs = {i for i, t in enumerate(hits) if t is not None}
-            left = [i for i in range(len(rows)) if i not in fs]
-            lw = sum(rows[i]["won"] for i in left)
-            lev = ((lw / len(left)) - ent - fee(ent)) if left else 0.0
-            # a filled window pays x minus the ENTRY fee only: the resting
-            # sell is a maker order and maker fees are zero
-            blend = (len(fs) * (x - fee(ent)) + len(left) * lev) / len(rows)
-            flo, _ = wilson(len(fs), len(rows))
-            llo, _ = wilson(lw, len(left)) if left else (0.0, 1.0)
-            blo = flo * (x - fee(ent)) + (1 - flo) * min(
-                (llo - ent - fee(ent)) if left else 0.0, lev)
-            per_day = blend * 250 * len(rows) * 24.0 / span_h if span_h else 0.0
-            got = [t for t in hits if t is not None]
-            print(f"{100*x:>4.0f}c {f'T+{h:.0f}':>6} "
-                  f"{100*len(fs)/len(rows):>6.0f}% "
-                  f"{(st.median(got) if got else float('nan')):>7.1f} "
-                  f"{(100*lw/len(left) if left else float('nan')):>9.0f}% "
-                  f"{100*blend:>+8.2f}c {100*blo:>+7.2f}c {per_day:>9.0f}")
-            best.append((blend, blo, x, h, len(fs)))
+        p = [pnl_limit(r, x, 1e9) for r in rows]
+        f_ = sum(1 for r in rows if touch(r, x, 1e9) is not None)
+        m, lo, pd = show(f"LIMIT +{100*x:.0f}c, to close", p,
+                         f"fills {100*f_/len(rows):.0f}%")
+        grid.append((m, lo, x, 1e9, p))
+
+    print("\n  -- give up at T+H and hold the rest --")
+    for x in EXITS:
+        for h in BY[:-1]:
+            p = [pnl_limit(r, x, h) for r in rows]
+            grid.append((sum(p) / len(p), band(p)[1], x, h, p))
+    timed = sorted((g for g in grid if g[3] < 1e8), key=lambda z: -z[0])[:6]
+    for m, lo, x, h, p in timed:
+        f_ = sum(1 for r in rows if touch(r, x, h) is not None)
+        show(f"LIMIT +{100*x:.0f}c by T+{h:.0f}s", p,
+             f"fills {100*f_/len(rows):.0f}%")
+
+    # ------------------------------------------- out-of-sample on the clock
+    # 50 cells are searched above and the best of 50 always looks good. The
+    # only honest guard is to choose on one half of the clock and score on the
+    # other. Four promising cells on this project died exactly here.
+    half = len(rows) // 2
+    a_rows, b_rows = rows[:half], rows[half:]
+    if len(a_rows) < 10 or len(b_rows) < 10:
+        print("\n(too few windows to split out of sample)")
+        return
+    print(f"\nOUT OF SAMPLE — pick on the first {len(a_rows)} windows, "
+          f"score on the last {len(b_rows)}")
+    cand = []
+    for x in EXITS:
+        for h in list(BY) + [1e9]:
+            pa = [pnl_limit(r, x, h) for r in a_rows]
+            cand.append((sum(pa) / len(pa), x, h))
+    cand.sort(key=lambda z: -z[0])
+    print(f"{'strategy':>22} {'in-sample':>11} {'OUT':>11} {'verdict':>10}")
+    ha = sum(pnl_hold(r) for r in a_rows) / len(a_rows)
+    hb = sum(pnl_hold(r) for r in b_rows) / len(b_rows)
+    print(f"{'HOLD to settlement':>22} {ha:>+10.2f}c {hb:>+10.2f}c "
+          f"{'':>10}")
+    for m, x, h in cand[:4]:
+        pb = [pnl_limit(r, x, h) for r in b_rows]
+        mb = sum(pb) / len(pb)
+        lbl = (f"LIMIT +{100*x:.0f}c, to close" if h > 1e8
+               else f"LIMIT +{100*x:.0f}c by T+{h:.0f}s")
+        print(f"{lbl:>22} {m:>+10.2f}c {mb:>+10.2f}c "
+              f"{('HELD' if mb > hb else 'lost to HOLD'):>10}")
+
+    best = [(m, lo, x, h, 0) for (m, lo, x, h, _) in grid]
 
     print("\nDOES THE JUMP SCALE WITH THE TILT?  (peak within T+15s)")
     print(f"{'|tilt| bp':>12} {'n':>5} {'med peak':>10} {'med 5c s':>10} "
@@ -333,18 +485,23 @@ def main():
 
     best.sort(key=lambda z: -z[1])          # rank by the LOWER bound
     b = best[0]
-    print(f"\nBEST BY LOWER BOUND: +{100*b[2]:.0f}c by T+{b[3]:.0f}s -> "
-          f"{100*b[0]:+.2f}c/share, bound {100*b[1]:+.2f}c, "
-          f"filling {b[4]}/{len(rows)}")
-    print(f"HOLD TO SETTLEMENT on the same windows: "
-          f"{100*(held/len(rows) - ent - fee(ent)):+.2f}c/share")
-    print("\nRANKED BY THE LOWER BOUND, NOT THE BLEND, because this prints")
-    print(f"{len(EXITS)*len(BY)} cells and the best of {len(EXITS)*len(BY)} "
-          "always looks good. A cell whose bound is")
-    print("negative has not been shown to be anything.")
-    print("A print at our price is not a guaranteed fill — queue position is")
-    print("not modelled, so this is the OPTIMISTIC half of the execution")
-    print("question and the live bid tracker is the pessimistic half.")
+    lbl = (f"+{100*b[2]:.0f}c to close" if b[3] > 1e8
+           else f"+{100*b[2]:.0f}c by T+{b[3]:.0f}s")
+    print(f"\nBEST LIMIT BY LOWER BOUND: {lbl} -> {b[0]:+.2f}c/share, "
+          f"bound {b[1]:+.2f}c")
+    print(f"HOLD on the same windows:   {hold[0]:+.2f}c/share, "
+          f"bound {hold[1]:+.2f}c")
+    print("\nHOW TO READ THIS, AND WHAT IT STILL CANNOT TELL YOU.")
+    print(f"  - {len(EXITS)*(len(BY)+1)} cells are searched. The best of that")
+    print("    many always looks good in sample, which is why the OUT column")
+    print("    above matters more than the mean column.")
+    print("  - n_eff is below the row count because consecutive windows are")
+    print("    correlated (lag-1 +0.126 measured separately). The bands are")
+    print("    widened for it; they are NOT widened for the cell search.")
+    print("  - a print at our price is not a guaranteed fill: queue position")
+    print("    is unmodelled, so every LIMIT row is the OPTIMISTIC bound and")
+    print("    the live bid tracker is the pessimistic one. HOLD has no such")
+    print("    assumption, so the comparison is tilted IN THE LIMIT'S FAVOUR.")
 
 
 if __name__ == "__main__":
