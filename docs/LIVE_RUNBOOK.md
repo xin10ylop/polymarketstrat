@@ -2159,3 +2159,55 @@ them in that order.
   it read +45c above a 0.51 entry. (3) The live tracker seeded its peak at the
   entry price and only ratcheted up, so a jump the WRONG way was invisible.
   Every number above is horizon-bound and every one of those is fixed.
+
+- 2026-08-10 LIMIT-UNTIL-RESOLUTION, AUDITED (123 btc / 77 eth / 45 sol
+  windows, real tape, post-rule-change). The user's spec — rest a sell at
+  entry+X and LEAVE IT until the window resolves — measured against holding,
+  with per-window P&L, clustering-discounted bands, and an out-of-sample split.
+
+    btc  HOLD                +11.91c/share  band [+2.09, +21.73]  n_eff 91
+         LIMIT +40c to close +11.76c/share  band [+4.14, +19.38]  fills 64%
+         LIMIT +25c to close  +7.27c/share  band [+1.61, +12.92]  fills 79%
+         LIMIT  +5c to close  +0.27c/share  band [-2.12,  +2.66]  fills 95%
+
+  THE STRATEGY IS SOUND BUT +5c WAS AN ORDER OF MAGNITUDE TOO SMALL. A limit
+  at +X surrenders (48c - X) of upside on a winner to rescue (X + 52c) on a
+  loser that happens to spike through. At X=5c that trade is terrible; it only
+  becomes worthwhile as X approaches the settlement value. At +40c the limit
+  matches the hold's mean to within 0.15c and has a TIGHTER band on both ends,
+  because capping the win at 40c and rescuing the occasional spike-then-fail
+  loser trims both tails. That is arithmetic, not a data-mined cell.
+
+  NOTHING BEAT HOLDING OUT OF SAMPLE. Ranking 60 cells on the first half of
+  the clock and scoring on the second: btc's best (+30c by T+30s) returned
+  +14.77c against the hold's +13.44c, on 62 windows and an 11% fill rate —
+  i.e. it IS the hold, plus a rare take-profit. Every eth and sol candidate
+  lost to the hold out of sample. No change is compelled by this.
+
+  WHAT IS NOW ESTABLISHED. btc HOLD clears zero at the 95% band even after
+  discounting the sample for autocorrelation (n_eff 91 of 123): +11.91c/share,
+  ~$1,727/day at a 250 clip. eth HOLD does NOT clear zero (band [-0.87,
+  +23.03]) — it is unproven in either direction, not disproven. sol is dead:
+  51.1% settle, band [-18.67, +14.67], 35% of its windows have no pre-open
+  prints at all, and 49% had not traded above entry even at T+5.
+
+  THE JUMP, HORIZON-CORRECTED. Median peak within T+15s scales cleanly with
+  the tilt: btc 0.5-1bp -> +11.15c, 1-2bp -> +15.88c, 2-4bp -> +18.00c. Wrong-
+  way rate within T+15 is 1/123 on btc, 4/77 on eth, 5/45 on sol.
+
+  AUDIT FINDINGS ON MY OWN TOOL, in the order they would have misled. \$/day
+  was 100x too large (cents never converted to dollars). n_eff could exceed
+  the row count, claiming more precision than the raw sample. The exit sweep
+  stopped at 15c and so never reached the range where a limit is competitive
+  at all. Every window used the sample MEDIAN entry for its own fee and payoff.
+  Silent drops were invisible (sol loses 35% of windows to missing pre-open
+  prints — both a liquidity signal and a selection bias). No mechanical
+  invariants were asserted. Fifty cells were searched with no out-of-sample
+  guard. Two of these were introduced in the same rewrite that fixed the
+  others, and were caught only because the tool is now smoke-tested against
+  synthetic data with a known answer before it touches real data.
+
+  STILL UNMODELLED: queue position. A print at our price is counted as a fill,
+  so every LIMIT row is the optimistic bound while HOLD carries no such
+  assumption — the comparison is tilted in the limit's favour and it still did
+  not win. The live bid tracker is the pessimistic bound on the same question.
