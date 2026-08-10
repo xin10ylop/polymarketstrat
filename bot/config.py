@@ -135,6 +135,20 @@ class Config:
     # ^ small first bite: a fresh big ask is adversely selected; an ask that
     #   SURVIVES a first take is proven stale — retries size up to the full clip
     snipe_price_floor: float = _env("SNIPE_PRICE_FLOOR", 0.0, float)
+
+    # ---- pre-open entry (bot/strategies/preopen.py) -------------------
+    # Buy the tilt side while the book is still flat, seconds before the
+    # window opens. Measured: sign accuracy at T-3 is 98.9% on windows over
+    # 1bp and only 83% at T-10, so the lead is 3 and not 10.
+    preopen_enabled: bool = _env("PREOPEN_ENABLED", 0, int) == 1
+    preopen_lead_s: float = _env("PREOPEN_LEAD_S", 3.0, float)
+    preopen_tilt_min_bp: float = _env("PREOPEN_TILT_MIN_BP", 1.0, float)
+    # refuse if the book already leans: at a flat book both sides sit near
+    # 0.50, so anything above this means the makers priced the tilt first
+    preopen_max_px: float = _env("PREOPEN_MAX_PX", 0.56, float)
+    preopen_clip: int = _env("PREOPEN_CLIP", 250, int)
+    preopen_exit_c: float = _env("PREOPEN_EXIT_C", 0.05, float)
+    preopen_mark_s: float = _env("PREOPEN_MARK_S", 15.0, float)
     # ^ 0 = off. Jun-Jul reconstruction says deep (<=0.80) asks decayed to -EV,
     #   but live paper fills there still print +EV — let the paper ledger
     #   referee; flip to 0.90 if a week of deep fills bleeds (runbook item)

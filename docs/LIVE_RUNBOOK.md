@@ -2038,3 +2038,30 @@ them in that order.
   +0.07bp — the signal said UP, DOWN won. But 0.07bp is noise by
   construction; TILT_MIN=1 refuses it. It is a demonstration of why the
   gate exists, not evidence against the signal.
+
+- 2026-08-10 PRE-OPEN PAPER BOT BUILT (bot/strategies/preopen.py), OFF BY
+  DEFAULT. At T-3 it computes the tilt from the oracle grid using ONLY the
+  seconds that exist at that instant, gates on |tilt| >= 1bp, and takes the
+  tilt side if the book has not already leaned past preopen_max_px.
+  MATH VERIFIED BEFORE DEPLOYMENT, not after:
+    - NO LOOKAHEAD: with the unseen tail flat at 100 and with it spiked to
+      500, the strike is IDENTICAL (100.0000). A peeker would have used
+      126.6667. The unseen seconds cannot reach the calculation.
+    - SIGN: spot 100.5 over a 100.0 mean picks UP; 99.5 picks DOWN.
+    - REFUSAL: 25% grid coverage returns None rather than guessing.
+    price_at was checked directly and only searches BACKWARD, so the
+    tolerance window cannot pull a future print either.
+  WHY BUY-AND-HOLD RATHER THAN THE +5c RESTING SELL. Holding is worth more
+  (+8.12c vs +3.25c after the entry fee), and a resting SELL would need
+  fill machinery PaperExecutor does not have — machinery whose first
+  version would be untested on exactly the path that decides the result.
+  So it holds, and writes a preopen_mark event at T+15 with the book and
+  whether a +5c limit would have been reachable, which prices the exit
+  variant later from data instead of from a fill model.
+  SEPARATE LEDGER (bot/data/preopen-btc) with SNIPE_ENABLED=0 and
+  TOLL_ENABLED=0, so this unit's PnL, risk breakers and fills cannot be
+  confused with the snipe's.
+  WHAT THE LEDGER SETTLES THAT NO RECORDER CAN: the price we actually pay
+  at T-3 (the LEAN risk), whether the order lands in time at all, and a
+  real settled PnL. The recorders answer the first only in aggregate and
+  the second not at all.

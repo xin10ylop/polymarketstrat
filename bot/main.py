@@ -18,6 +18,7 @@ from bot.engine.risk import RiskManager
 from bot.feeds.clob import ClobFeed
 from bot.feeds.oracle import Oracle
 from bot.feeds.spot import SpotFeed
+from bot.strategies.preopen import PreopenStrategy
 from bot.strategies.snipe import SnipeStrategy
 from bot.strategies.toll import TollStrategy
 
@@ -199,6 +200,7 @@ async def amain():
         executor = PaperExecutor(CFG, clob, ledger)
     toll = TollStrategy(CFG, clob, oracle, spot, executor, ledger, risk)
     snipe = SnipeStrategy(CFG, clob, oracle, spot, executor, ledger, risk)
+    preopen = PreopenStrategy(CFG, clob, oracle, spot, executor, ledger, risk)
 
     kfeed = None
     if CFG.kalshi_telemetry:
@@ -227,6 +229,7 @@ async def amain():
         asyncio.create_task(risk.run(), name="risk"),
         asyncio.create_task(toll.run(), name="toll"),
         asyncio.create_task(snipe.run(), name="snipe"),
+        asyncio.create_task(preopen.run(), name="preopen"),
         asyncio.create_task(_supervised("reconciler", reconciler, CFG, clob, ledger, toll, oracle), name="reconciler"),
         asyncio.create_task(_supervised("healer", settlement_healer, CFG, ledger), name="healer"),
         asyncio.create_task(_supervised("status", status, CFG, ledger, oracle, spot, clob, toll, snipe), name="status"),

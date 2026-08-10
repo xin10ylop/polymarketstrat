@@ -1,0 +1,40 @@
+[Unit]
+Description=Polymarket PRE-OPEN paper bot (btc 5m) - buy the tilt side before the window opens
+After=network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=600
+StartLimitBurst=20
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/polymarketstrat
+Environment=BOT_MODE=paper
+Environment=COIN=btc
+Environment=FAMILY=5m
+Environment=WINDOW_SECS=300
+Environment=SLUG_PREFIX=btc-updown-5m
+Environment=SPOT_FEED=coinbase
+# ONLY the pre-open strategy trades in this unit. Its own data dir keeps the
+# ledger separate from the snipe's, so neither strategy's risk breakers or
+# PnL can be confused with the other's.
+Environment=PREOPEN_ENABLED=1
+Environment=SNIPE_ENABLED=0
+Environment=TOLL_ENABLED=0
+Environment=BOT_DATA_DIR=/opt/polymarketstrat/bot/data/preopen-btc
+# 3s: sign accuracy is 98.9% there and 83% at 10s. Measured, not chosen.
+Environment=PREOPEN_LEAD_S=3
+# below 1bp the tilt is noise by construction — the gate is the strategy
+Environment=PREOPEN_TILT_MIN_BP=1.0
+# a flat pre-open book sits near 0.50 both sides; above this the makers have
+# already priced the tilt and the entry is no longer the one we measured
+Environment=PREOPEN_MAX_PX=0.56
+Environment=PREOPEN_CLIP=250
+Environment=LOG_LEVEL=INFO
+Environment=MAX_DAILY_LOSS=250
+ExecStart=/opt/polymarketstrat/venv/bin/python -m bot.main
+Restart=always
+RestartSec=10
+MemoryMax=200M
+
+[Install]
+WantedBy=multi-user.target
