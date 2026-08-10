@@ -1515,3 +1515,36 @@ them in that order.
   mid + 0.005, assumed. Four slice sizes x two rankings were examined.
   bot/vol_tilt.py reruns all of it on the real Chainlink grid. NO BOT
   CHANGE until that confirms and a second disjoint day agrees.
+
+- 2026-08-10 VOL SCALING: RETRACTED ON THE REAL FEED, SAME DAY. The droplet
+  ran bot/vol_tilt.py on the Chainlink grid and the result does not hold.
+      btc  n=265   vol-scaled beats raw in 3 of 4 slices, but LOSES the top
+                   slice (raw 92.3% vs scaled 84.6%)
+      eth  n=188   raw beats vol-scaled in 4 of 4 slices
+  On Binance it was 8 of 8. On the real feed it is 3 of 8. The mechanism
+  table inverts on eth too: book pays 81% in calm and 50% in wild, against
+  50%/154% on the proxy. Only one of sixteen cells has a positive lower
+  bound (+0.12c, btc scaled top 10%), which is zero dressed up.
+  ROOT CAUSE, AND IT IS THE SAME MISTAKE TWICE. Binance 5m-bar vol is 7.0bp
+  against the grid's 2.8bp. I ranked windows by |tilt|/vol where BOTH terms
+  came from the noisy proxy — a noisy signal divided by a noisy scaler. The
+  ranking was largely sorting on noise level. I had already established
+  that Binance overstates the tilt and wrote that it would merely
+  UNDERSTATE the result; I never considered that it also corrupts the
+  volatility estimate doing the ranking. That is the second retraction from
+  the same proxy in two days.
+  WHAT SURVIVES. The raw opening tilt, on the real feed, both coins:
+      btc  raw top 5%   n=13  92.3% at 0.665 -> +24.3c  [lo -1.3c]
+      btc  raw top 10%  n=26  76.9% at 0.655 ->  +9.9c  [lo -9.1c]
+      eth  raw top 5%   n=12  66.7% at 0.563 ->  +8.6c  [lo -19.0c]
+      eth  raw top 20%  n=37  64.9% at 0.595 ->  +3.7c  [lo -12.4c]
+  Positive point estimates in the top slices on both coins, every lower
+  bound negative, n between 12 and 37 on 1.53 days of grid. Unchanged in
+  status: a lead. The AHL refinement is not part of it.
+  STANDING METHOD RULE FROM HERE: no signal result on this market counts
+  until it is measured on the oracle grid. Binance may generate hypotheses
+  and may never confirm one. bot/proxy_calib.py exists to test whether a
+  SMOOTHED Binance can be trusted for the archive — the decisive column is
+  how often the proxy picks the wrong SIDE on the windows we would trade,
+  not the correlation. Above ~5% wrong-side, the archive is unusable and
+  research waits on the grid.
