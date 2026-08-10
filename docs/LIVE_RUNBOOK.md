@@ -2065,3 +2065,23 @@ them in that order.
   at T-3 (the LEAN risk), whether the order lands in time at all, and a
   real settled PnL. The recorders answer the first only in aggregate and
   the second not at all.
+
+- 2026-08-10 PRE-OPEN BOT IS LIVE (paper) AND WAS INVISIBLE. It started
+  clean — feeds up, 4-5 markets discovered including the NEXT window, ws on
+  8-10 tokens, oracle 0.1-1.1s stale, no mismatches — but the STATUS line
+  said nothing about it. The `pre[on=0 placed=0 ...]` field in that line is
+  the SNIPE's pre-positioning counter, not this strategy. And a skipped
+  window logged nothing at all, so "no fills yet" and "completely broken"
+  looked identical. That is exactly the failure mode that cost two
+  recorders this week, so it is fixed before the data matters:
+    - STATUS now carries preopen[evals= in= skip= why={...}]
+    - every skip logs its reason and the numbers behind it, e.g.
+      "w… preopen skip: flat_tilt (+0.31bp < 1.0bp)" or
+      "w… preopen skip: book_leans (up ask 0.610 > 0.56, tilt +1.8bp)"
+  CHECKED AND FINE: risk.halted("preopen") returns False for an unscoped
+  strategy name, so the risk gate is not silently blocking it.
+  NO FILLS AFTER ~6 MINUTES IS EXPECTED, NOT A FAULT. The 1bp gate passes
+  roughly a quarter of windows (1,577 of 6,047 measured), so one or two
+  windows with nothing is the common case. The `why` histogram is what
+  distinguishes "correctly waiting" from "never firing" — if evals climbs
+  and flat_tilt dominates, it is working as designed.

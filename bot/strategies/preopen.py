@@ -58,9 +58,13 @@ class PreopenStrategy:
         self.why = {}
 
     # ------------------------------------------------------------------
-    def _skip(self, reason):
+    def _skip(self, reason, wts=None, detail=""):
+        """Every skipped window says so. A silent strategy is indistinguishable
+        from a broken one, which is how two recorders sat dead this week."""
         self.why[reason] = self.why.get(reason, 0) + 1
         self.skips += 1
+        log.info("w%s preopen skip: %s%s", wts, reason,
+                 f" ({detail})" if detail else "")
         return False
 
     def _tilt(self, open_s, lead):
@@ -120,29 +124,32 @@ class PreopenStrategy:
         self.evals += 1
         t = self._tilt(wts, self.cfg.preopen_lead_s)
         if t is None:
-            return self._skip("no_grid")
+            return self._skip("no_grid", wts)
         tilt, s, k = t
         if abs(tilt) < self.cfg.preopen_tilt_min_bp:
-            return self._skip("flat_tilt")
+            return self._skip("flat_tilt", wts, f"{tilt:+.2f}bp < "
+                              f"{self.cfg.preopen_tilt_min_bp}bp")
         mk = self.clob.market_for(wts)
         if mk is None:
-            return self._skip("no_market")
+            return self._skip("no_market", wts)
         side = "up" if tilt >= 0 else "down"
         token = mk.token_up if side == "up" else mk.token_down
         st = self.clob.state(token)
         if st is None or not st.book_fresh(self.cfg.book_max_age_s):
-            return self._skip("stale_book")
+            return self._skip("stale_book", wts, f"tilt {tilt:+.2f}bp {side}")
         if st.best_ask is None:
-            return self._skip("no_ask")
+            return self._skip("no_ask", wts, f"tilt {tilt:+.2f}bp {side}")
         # A LEANING BOOK IS THE ONE THING THAT KILLS THIS. If the makers have
         # already priced the tilt, the entry is no longer ~0.50 and the edge
         # shrinks one-for-one. Refuse rather than pay it.
         if st.best_ask > self.cfg.preopen_max_px:
-            return self._skip("book_leans")
+            return self._skip("book_leans", wts,
+                              f"{side} ask {st.best_ask:.3f} > "
+                              f"{self.cfg.preopen_max_px:.2f}, tilt {tilt:+.2f}bp")
         order = self.exec.take(wts, "preopen", token, self.cfg.preopen_max_px,
                                self.cfg.preopen_clip)
         if not order or not order.filled:
-            return self._skip("no_fill")
+            return self._skip("no_fill", wts, f"{side} ask {st.best_ask:.3f}")
         self.entries += 1
         self.marks[wts] = dict(side=side, token=token, px=order.price,
                                sz=order.filled, tilt=tilt)
