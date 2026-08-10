@@ -38,8 +38,11 @@ from concurrent.futures import ThreadPoolExecutor
 
 from bot.twap_verify import COIN, FAMILY, NSEC, WINDOW, load_grid, official
 
+# 298/285/270 are T+2/T+15/T+30 on a 5m window — the OPEN. They were added
+# to the recorders on 08-09 and the default here never included them, so the
+# first run after that change silently reported on the old leads only.
 LEADS = [int(x) for x in os.environ.get(
-    "LEADS", "120,90,60,45,30,20,10,6,3").split(",")]
+    "LEADS", "298,285,270,240,180,120,90,60,45,30,20,10,6,3").split(",")]
 GAP_BPS = float(os.environ.get("GAP_BPS", "0"))     # 0 = the whole population
 CLIP = float(os.environ.get("CLIP", "250"))
 BOOK_DIR = os.environ.get("BOOK_DIR", "bot/data/bookcal")
