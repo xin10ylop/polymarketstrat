@@ -1972,3 +1972,39 @@ them in that order.
   the strike from all 30. That overstates the pre-open signal slightly. The
   sign-agreement table above is the honest version and is what the
   arithmetic uses; price_curve needs a truncated strike for leads > WINDOW.
+
+- 2026-08-10 PRE-OPEN, FIRST WINDOW EVER SAMPLED — AND IT FOUND THE REAL
+  CONSTRAINT. My scratch sampler died after one window (third recorder lost
+  this week; the droplet's is the one that matters and it IS collecting —
+  leads 303/305/310/320 confirmed writing). That single window:
+      T-20   up 0.50 x160    dn 0.51 x55
+      T-10   up 0.52 x  5    dn 0.49 x323
+      T-5    up 0.52 x  5    dn 0.49 x20
+      T-3    up 0.53 x 14    dn 0.49 x16
+      T+2    up 0.52 x182    dn 0.49 x199
+      T+5    up 0.67 x227    dn 0.34 x108      <- the snap
+      T+15   up 0.70 x140    dn 0.30 x455
+  THREE THINGS IN ONE WINDOW:
+  (1) THE SNAP IS REAL AND BIG — 0.52 -> 0.67 -> 0.70 between T+2 and T+15.
+      A +5c limit sits well inside that.
+  (2) THE SNAP IS NOT AT T+2, IT IS AT T+5. At T+2 the book was still 0.52.
+      The "0.563 average at T+2" from price_curve mixes windows that had
+      snapped with windows that had not.
+  (3) THE LIQUIDITY VANISHES EXACTLY WHEN THE SIGNAL SHARPENS. 160 shares
+      at 0.50 at T-20; FOURTEEN at 0.53 by T-3. Makers pull into the open.
+      This is the binding constraint and I had not considered it:
+          T-20  size ~160  sign accuracy 64%
+          T-3   size ~14   sign accuracy 99%
+      The strategy's value is edge x size, and those move in opposite
+      directions across the entry lead. n=1, so this is a hypothesis about
+      shape, not a measurement.
+  bot/preopen_report.py reads the droplet's pre-open rows and reports
+  exactly the four quantities that decide it: LEAN (does the book already
+  charge more for our side), SIZE (median shares at the touch), SNAP (T+2
+  and T+15 prices), WIN (settlement rate and hold EV with a lower bound).
+  NO LOOKAHEAD: at T-n it builds the strike from only the 30-n seconds that
+  exist, imputing the tail from the last print — exactly what a live bot
+  would have. price_curve uses all 30 and therefore overstates the pre-open
+  signal, which is why this is a separate tool rather than another lead in
+  that table. Verified against a fixture with a known tilt and a
+  deliberately flat book: reports lean +0.00c and recovers the right side.
