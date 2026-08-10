@@ -1722,3 +1722,43 @@ them in that order.
   candidate whose edge could be structurally large rather than
   statistically real, and it is the same shape as the mechanism that
   actually paid. Record first, decide later.
+
+- 2026-08-10 THE 5m BOOK RECORDERS WERE DEAD FOR TWO HOURS. MY BUG.
+  polybot-bookrec and polybot-bookrec-eth-5m: FAILED. Traceback:
+      sqlite3.OperationalError: table book has 8 columns but 9 values supplied
+  When the audit added the `err` column on 08-09 I changed the CREATE TABLE
+  and the INSERT together. CREATE TABLE IF NOT EXISTS is a NO-OP on a
+  database that already exists, so the two 5m recorders — whose tables
+  predate the change — kept their 8-column shape and threw on every single
+  write. They died at 23:02, systemd burned its 20 restarts in 60 seconds,
+  hit StartLimitBurst and stopped trying. Nothing alerted. The btc 15m unit
+  survived only because its database was created after the change.
+  COST: leads 298/285/270 (T+2/T+15/T+30) have ZERO rows. The open — the
+  measurement the recorders were changed to collect, and the one I have
+  been telling the owner to wait for — was never recorded at all.
+  FIXED: db_open() now ALTERs in a missing `err` column, and the writer uses
+  named columns instead of positional so the next schema change cannot
+  couple to the column count. Verified against a synthetic 8-column table:
+  migrates, preserves the old rows, accepts a 9-value insert.
+  TWO PROCESS FAILURES WORTH MORE THAN THE BUG. (1) A schema change shipped
+  to running recorders with no migration and no post-restart check — I ran
+  `systemctl restart` and never looked at whether rows were still arriving.
+  (2) price_curve's default LEADS never included 298/285/270, so the first
+  run after the change reported on the old leads and looked normal. Two
+  independent reasons the same silence went unnoticed for two hours. Any
+  future recorder change: restart, wait one window, count rows.
+
+- 2026-08-10 WHAT THE OPEN LEADS SAY WITH THE DATA THAT DID SURVIVE.
+  Leads 240 and 180 (T+60, T+120) were added in an earlier service edit and
+  collected 30 windows before the crash:
+      lead 298 (T+2)    signal 50.5% [41,60]   no book data
+      lead 285 (T+15)   signal 61.9% [52,71]   no book data
+      lead 270 (T+30)   signal 63.5% [54,72]   no book data
+      lead 240 (T+60)   signal 62.9%  quoted 100%  ask 0.672  needs 68.7%  -5.86c
+      lead 180 (T+120)  signal 68.8%  quoted 100%  ask 0.782  needs 79.4% -10.64c
+  Where the open IS priced, it is priced AGAINST us — the book charges 6 to
+  11 points more than our accuracy justifies, and it quotes 100% of the
+  time, so there is no drought to blame. This is consistent with the 21-day
+  proxy result (+0.6 points of edge, inside the spread) and points the same
+  way. T+15 and T+30 remain the only unmeasured leads, and given T+60 is
+  -5.9c and T+120 is -10.6c, the prior on them should be low.

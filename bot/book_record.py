@@ -38,7 +38,17 @@ def db_open():
     db = sqlite3.connect(os.path.join(OUT_DIR, f"{COIN}_{FAMILY}_book.db"))
     db.execute("""CREATE TABLE IF NOT EXISTS book(
         wts INTEGER, lead INTEGER, side TEXT, ask REAL, ask_sz REAL,
-        bid REAL, bid_sz REAL, ts REAL, PRIMARY KEY(wts, lead, side))""")
+        bid REAL, bid_sz REAL, ts REAL, err INTEGER DEFAULT 0,
+        PRIMARY KEY(wts, lead, side))""")
+    # MIGRATE. CREATE TABLE IF NOT EXISTS is a no-op on a database that
+    # already exists, so adding `err` to the schema above did nothing to the
+    # recorders already running — their inserts threw "8 columns but 9 values"
+    # on every write and both 5m units sat dead for two hours before anyone
+    # looked. Any column added here from now on needs a line below it.
+    cols = {r[1] for r in db.execute("PRAGMA table_info(book)")}
+    if "err" not in cols:
+        db.execute("ALTER TABLE book ADD COLUMN err INTEGER DEFAULT 0")
+        print("migrated: added err column to an existing book table", flush=True)
     db.commit()
     return db
 
@@ -113,8 +123,11 @@ def main():
                     t = top(tok)
                     err = 1 if t is None else 0
                     t = t or (None, None, None, None)
+                    # named columns, not positional: a positional insert is
+                    # what coupled this writer to the exact column count
                     db.execute(
-                        "INSERT OR REPLACE INTO book VALUES(?,?,?,?,?,?,?,?,?)",
+                        "INSERT OR REPLACE INTO book(wts,lead,side,ask,ask_sz,"
+                        "bid,bid_sz,ts,err) VALUES(?,?,?,?,?,?,?,?,?)",
                         (wts, L, side, t[0], t[1], t[2], t[3], time.time(), err))
                 db.commit()
                 if L == LEADS[0]:
