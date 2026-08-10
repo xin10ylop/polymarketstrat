@@ -1548,3 +1548,48 @@ them in that order.
   how often the proxy picks the wrong SIDE on the windows we would trade,
   not the correlation. Above ~5% wrong-side, the archive is unusable and
   research waits on the grid.
+
+- 2026-08-10 THE PROXY IS CALIBRATED, AND IT CLOSES THE OPEN-TILT LEAD.
+  bot/proxy_calib.py on 36.8h of overlap: with a 5s trailing-mean spot, the
+  Binance tilt agrees with the grid's at corr 0.896, regression slope 0.944
+  (near-unbiased), and — the column that decides — it picks the WRONG SIDE
+  on 0.0% of |tilt|>1bp windows. 15s and 30s smoothing blow the slope up to
+  1.23 and 10.6 because the smoothed spot converges onto the strike itself,
+  which is the sanity check passing. The archive is usable at 5s.
+  Note the 1s vol ratio over this overlap is only 1.2x (grid 0.127 vs
+  binance 0.152 bp/s), not the 3.6x measured over 21 days — the last day
+  and a half is an unusually calm stretch. That fact matters below.
+  SIGNAL AT SCALE, 21 days, 6,047 windows per coin, self-settled:
+      btc  0-0.5bp 53.2%  0.5-1 59.0%  1-2 58.8%  2-3 62.7%  3+ 63.4%
+      eth  0-0.5bp 52.5%  0.5-1 55.0%  1-2 57.0%  2-3 59.4%  3+ 60.6%
+      btc >=1bp  60.6% [58.1,62.9] n=1577 | thirds 55.2 / 59.2 / 67.2
+      eth >=1bp  58.3% [56.2,60.3] n=2167 | thirds 56.8 / 58.0 / 60.0
+  THE OPENING TILT IS REAL. Monotone on both coins, every third above 55%,
+  tight intervals on thousands of windows. That is no longer in question.
+  AND IT IS PRICED TO WITHIN 0.6 POINTS. Pooled against real quotes at
+  |tilt|>=1bp: 134/206 = 65.0% at 0.569, needing 58.6%, EV +6.42c/share
+  with a lower bound of -0.31c. But the priced sample is three days inside
+  the calm stretch noted above, and the 21-day truth is 59.3%, not 65%:
+      btc  priced 67.4%  vs 21-day 60.6%  -> +6.8 points of regime luck
+      eth  priced 63.2%  vs 21-day 58.3%  -> +4.9 points
+  Against a break-even of 58.6%, the realistic edge is +0.6 points. It is
+  gone at mid+0.015 and negative at mid+0.020, and mid+0.005 already
+  assumes the tight 1c spread. RETRACTING my own expectations from earlier
+  today: the 92.3% / 87.5% / 83.3% top-slice cells were small samples drawn
+  from a calm regime, and I quoted them as if they were the edge.
+  THE WEEK'S UNIFYING RESULT. Every signal reachable at 5m scale is worth
+  less than the toll. AHL momentum: +0.12 points against a 1.75-point fee.
+  The opening tilt: +0.6 points against the same wall. The old edge was
+  never a signal — it was a feed discrepancy worth 19 points, which is why
+  it cleared. Beating this market requires something structurally large,
+  not something statistically real.
+  STILL OPEN, in order: (1) bot/parity_audit.py has never run, and it
+  decides whether the historical record is trustworthy at all; (2) the real
+  ask at T+2/T+15 from the recorders, which turns the +0.6 into a number
+  rather than an assumption; (3) Kalshi KXBTC15M — CONFIRMED to run the
+  SAME rule as Polymarket's 15m (60s average at close vs 60s average at
+  open) on the SAME :00/:15/:30/:45 clock, settled on CF Benchmarks BRTI
+  instead of Chainlink, with 800-1900 contracts of depth. Two venues, one
+  event, two resolvers. That is a price gap, not a signal, so it is the one
+  remaining candidate not capped by the fee wall — a cross-venue gap can be
+  10 points where a forecast is worth 0.6.
