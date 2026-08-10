@@ -2085,3 +2085,28 @@ them in that order.
   windows with nothing is the common case. The `why` histogram is what
   distinguishes "correctly waiting" from "never firing" — if evals climbs
   and flat_tilt dominates, it is working as designed.
+
+- 2026-08-10 THE GATE WAS COSTING MONEY. I set PREOPEN_TILT_MIN_BP=1.0 by
+  guess. Measured DIRECTLY on the T-3 signal (truncated strike, no
+  lookahead), 6,078 btc windows over 21 days, entry 0.505, break-even
+  52.25%:
+      gate     trades/day   win%    edge     $/day    lower-bound floor
+      0.25bp      147      58.3%   6.03c    2,213         1,573
+      0.50bp      107      59.1%   6.87c    1,843         1,296
+      0.75bp       80      60.8%   8.59c    1,727         1,256
+      1.00bp       60      60.2%   7.94c    1,186           779
+  The 1bp gate threw away nearly half the trades and $500/day of floor.
+  Moved to 0.5bp. NOT to 0.25bp, even though it scores higher: the proxy
+  calibration only verified the sign down to 1bp, so below ~0.5 the
+  measurement rests on a tilt the calibration does not cover. Taking the
+  measured optimum inside the trusted range rather than the global one.
+  ETH WANTS A DIFFERENT GATE, AND FOR A MECHANICAL REASON. Its 0.25-1.0bp
+  buckets sit at 52-54% against the same 52.25% break-even — nothing — and
+  it only separates above 1bp (1.0-1.5 57.1%, 1.5-2.0 59.6%, 2.0-3.0
+  61.1%). Cause: eth's 1s vol is 0.185 bp/s against btc's 0.108, so a basis
+  point of tilt is worth less there. Per-coin gates, not one number.
+      eth at 1.0bp: 85 trades/day, 58.2%, $1,262/day, $773 floor
+  eth deployed as its own unit with its own ledger.
+  NOTE THE BUCKET DETAIL IS NOISY (btc 0.50-0.75 wins 54.0% while 0.75-1.00
+  wins 62.7%). The fine structure is sampling noise; only the CUMULATIVE
+  gate rows are stable, which is why the gate is chosen from those.

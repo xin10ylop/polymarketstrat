@@ -1,5 +1,5 @@
 [Unit]
-Description=Polymarket PRE-OPEN paper bot (btc 5m) - buy the tilt side before the window opens
+Description=Polymarket PRE-OPEN paper bot (eth 5m) - buy the tilt side before the window opens
 After=network-online.target
 Wants=network-online.target
 StartLimitIntervalSec=600
@@ -9,10 +9,10 @@ StartLimitBurst=20
 Type=simple
 WorkingDirectory=/opt/polymarketstrat
 Environment=BOT_MODE=paper
-Environment=COIN=btc
+Environment=COIN=eth
 Environment=FAMILY=5m
 Environment=WINDOW_SECS=300
-Environment=SLUG_PREFIX=btc-updown-5m
+Environment=SLUG_PREFIX=eth-updown-5m
 Environment=SPOT_FEED=coinbase
 # ONLY the pre-open strategy trades in this unit. Its own data dir keeps the
 # ledger separate from the snipe's, so neither strategy's risk breakers or
@@ -20,15 +20,15 @@ Environment=SPOT_FEED=coinbase
 Environment=PREOPEN_ENABLED=1
 Environment=SNIPE_ENABLED=0
 Environment=TOLL_ENABLED=0
-Environment=BOT_DATA_DIR=/opt/polymarketstrat/bot/data/preopen-btc
+Environment=BOT_DATA_DIR=/opt/polymarketstrat/bot/data/preopen-eth
 # 3s: sign accuracy is 98.9% there and 83% at 10s. Measured, not chosen.
 Environment=PREOPEN_LEAD_S=3
 # below 1bp the tilt is noise by construction — the gate is the strategy
-# 0.5bp, measured directly on the T-3 signal: 107 trades/day at 59.1% and a
-# $1,296/day lower-bound floor, against 60 trades and $779 at the 1.0bp gate
-# I first guessed. Not lower than 0.5 - the proxy calibration only verified
-# the sign below 1bp down to there.
-Environment=PREOPEN_TILT_MIN_BP=0.5
+# eth wants a HIGHER gate than btc, and the reason is mechanical: its 1s vol
+# is 0.185 bp/s against btc's 0.108, so a basis point of tilt is worth less.
+# Measured: eth's 0.25-1.0bp buckets all sit at 52-54%, barely over the
+# 52.25% break-even, and it only separates above 1bp.
+Environment=PREOPEN_TILT_MIN_BP=1.0
 # a flat pre-open book sits near 0.50 both sides; above this the makers have
 # already priced the tilt and the entry is no longer the one we measured
 Environment=PREOPEN_MAX_PX=0.56
