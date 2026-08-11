@@ -23,10 +23,18 @@ Two things must survive untouched, and most of this file is about them:
 
 Pure in-memory fakes: no network, no ledger file, no bot.
 """
+import logging
 import os
 import sys
 import time
 from dataclasses import replace
+
+# The code under test logs a WARNING on every shadow trip and an ERROR on
+# every halt — by design. Left on, a run prints nine of them straight to the
+# terminal, interleaved with the PASS lines, which makes the five-suite
+# deploy gate unreadable. The assertions check the LEDGER rows, not the log,
+# so silencing the logger costs no coverage.
+logging.getLogger("risk").setLevel(logging.CRITICAL)
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 

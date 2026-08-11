@@ -2734,3 +2734,35 @@ them in that order.
   FIVE SUITES NOW GATE A PRE-OPEN DEPLOY:
       test_preopen_strike  test_risk_shadow_stop  test_halt_audit
       test_twap_align      test_clear_subband
+
+- 2026-08-11 RESOLVED AND TRADING. Dry run said 3 rows, 0 refused; apply
+  matched exactly; btc and eth restarted at _mismatches 0, evaluating at lead
+  2.96s, and `halted` is gone from every why histogram.
+
+      preopen-btc w1786475400  -0.310bp  cleared
+      preopen-eth w1786459500  -0.303bp  cleared
+      preopen-eth w1786475400  -0.421bp  cleared
+      both 15m ledgers: clean
+
+  FLEET AT THE CLOSE OF THIS INVESTIGATION
+      btc 5m   130 fills  +471.38      btc 15m   63 fills  +574.99
+      eth 5m    69 fills  -542.30      eth 15m    9 fills   -46.29
+      net +457.78, and from here the record is uncensored on the daily stop.
+
+  WHAT THE WHOLE INVESTIGATION CONCLUDED: the oracle is fine. Estimator ruled
+  out, alignment ruled out on both coins out of sample, zero errors on any
+  window decided by more than 1bp across 809 windows. The tripwire had been
+  calibrated to a GUESSED 0.05bp error against a real 0.421bp one, so it was
+  flagging our own arithmetic and halting the fleet for it.
+
+- 2026-08-11 STILL OPEN, and worth its own session. THE COVERAGE REFUSALS ARE
+  UNEXPLAINED: twap_align reports 146 of 412 btc windows (35%) and 119 of 400
+  eth (30%) refused for coverage below 0.9. That is a THIRD of all windows
+  where the mismatch tripwire has no opinion at all, for a reason entirely
+  separate from the tie band — and it was not noticed until the align scan
+  printed it. Refusing is the safe direction so nothing is mis-settled, but
+  a third of the sample being unpriceable bounds what any settlement-based
+  analysis can ever say, and it is not obviously consistent with the "6.5%
+  btc / 10.1% eth blackout" figure recorded earlier. Either the blackout rate
+  is worse than measured, or coverage is thin for a different reason. Do not
+  raise or lower ORACLE_TWAP_MIN_COVERAGE before knowing which.
