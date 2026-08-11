@@ -164,6 +164,14 @@ class Config:
     # strictly harder question and understates the fill rate by every touch
     # in between. These drive continuous tracking off the CLOB websocket the
     # bot already holds, so the cost is zero extra requests.
+    # THE FLOOR ON HOW LATE AN ENTRY MAY BE. The loop used to fire only inside
+    # a 0.6s slot at T-lead and silently dropped any window where the event
+    # loop was busy at that instant — 22% of btc 5m windows and 35% of eth's
+    # over 19 hours, with no log line of any kind, while both 15m bots hit
+    # 101% and 104%. It now fires any time between the target lead and this
+    # floor, which is the time an order still needs to reach the book before
+    # the open.
+    preopen_min_lead_s: float = _env("PREOPEN_MIN_LEAD_S", 0.5, float)
     preopen_track_s: float = _env("PREOPEN_TRACK_S", 90.0, float)
     preopen_track_levels: tuple = tuple(
         float(x) for x in _env(

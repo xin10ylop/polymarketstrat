@@ -42,6 +42,12 @@ import time
 
 log = logging.getLogger("preopen")
 
+# How many recent evaluations the achieved-lead summary spans. A rolling
+# window, not all of history: the question STATUS answers is "is the loop
+# firing on time NOW", and an all-time median would take days to move after a
+# regression. Every lead is also written to the ledger, so nothing is lost.
+LEAD_KEEP = 500
+
 
 class PreopenStrategy:
     def __init__(self, cfg, clob, oracle, spot, executor, ledger, risk):
@@ -56,6 +62,7 @@ class PreopenStrategy:
         self.marks = {}            # wts -> entry info, for post-open telemetry
         self.evals = self.entries = self.skips = 0
         self.why = {}
+        self.leads = []            # actual seconds-to-open, last LEAD_KEEP evals
 
     # ------------------------------------------------------------------
     def _skip(self, reason, wts=None, detail=""):
@@ -66,6 +73,33 @@ class PreopenStrategy:
         log.info("w%s preopen skip: %s%s", wts, reason,
                  f" ({detail})" if detail else "")
         return False
+
+    def _when(self, now, nxt):
+        """(action, lead) for this instant: "wait" | "fire" | "too_late".
+
+        Extracted from the run loop so the tests exercise THIS function rather
+        than a copy of its logic — a test that mirrors an implementation
+        cannot catch the implementation changing.
+        """
+        if now < nxt - self.cfg.preopen_lead_s:
+            return ("wait", None)
+        if now > nxt - self.cfg.preopen_min_lead_s:
+            return ("too_late", None)
+        return ("fire", nxt - now)
+
+    def lead_stats(self):
+        """One STATUS field answering "is the loop still firing on time?".
+
+        `worst` is the SMALLEST achieved lead, i.e. the latest the loop ever
+        woke — that is the number that walks toward the floor when the box
+        gets busy, and the one that would have shown the dropped-window bug
+        the day it started instead of nineteen hours later.
+        """
+        if not self.leads:
+            return "n/a"
+        ls = sorted(self.leads)
+        return (f"med={ls[len(ls) // 2]:.2f} worst={ls[0]:.2f} "
+                f"tgt={self.cfg.preopen_lead_s:g} n={len(ls)}")
 
     def _tilt(self, open_s, lead):
         """(tilt_bp, spot, strike) using ONLY what exists at open_s - lead.
@@ -111,7 +145,6 @@ class PreopenStrategy:
     # ------------------------------------------------------------------
     async def run(self):
         T = self.cfg.window_secs
-        lead = self.cfg.preopen_lead_s
         while True:
             now = time.time()
             nxt = int(now - now % T) + T          # the window about to open
@@ -131,13 +164,27 @@ class PreopenStrategy:
             if self.risk.halted("preopen"):
                 await asyncio.sleep(1.0)
                 continue
-            # fire once, inside a tight band around T-lead
-            if not (0.0 <= (nxt - lead) - now <= 0.6):
+            # The previous version fired ONLY inside a 0.6s slot at T-lead and
+            # silently dropped the window otherwise. Over 19h that lost 22% of
+            # btc 5m evaluations and 35% of eth's with no log line of any kind,
+            # while both 15m bots — a third as many reconcile cycles landing on
+            # top of the band — hit 101% and 104%.
+            action, actual = self._when(now, nxt)
+            if action == "wait":
                 await asyncio.sleep(0.05)
                 continue
+            if action == "too_late":
+                self.done.add(nxt)
+                self._skip("too_late", nxt, f"woke {nxt - now:+.2f}s from open")
+                continue
             self.done.add(nxt)
+            # EVALUATE AT THE MOMENT WE ACTUALLY EVALUATE. Passing the nominal
+            # lead would price a T-3 view while standing at T-1.5, discarding
+            # information already in hand. It also makes the achieved lead a
+            # recorded quantity, so the spread across live fills answers the
+            # lead question with real entries instead of book snapshots.
             try:
-                self._enter(nxt)
+                self._enter(nxt, actual)
             except Exception as e:  # noqa: BLE001
                 log.warning("w%s preopen error: %s", nxt, e)
             # keep `done` from growing forever
@@ -145,9 +192,17 @@ class PreopenStrategy:
                 self.done = {w for w in self.done if w > now - 4 * T}
 
     # ------------------------------------------------------------------
-    def _enter(self, wts):
+    def _enter(self, wts, lead=None):
+        """lead is the ACTUAL seconds-to-open at this instant, not the
+        configured target — a loop that woke late holds more of the strike
+        and should use it."""
+        if lead is None:
+            lead = self.cfg.preopen_lead_s
         self.evals += 1
-        t = self._tilt(wts, self.cfg.preopen_lead_s)
+        self.leads.append(round(lead, 2))
+        if len(self.leads) > LEAD_KEEP:
+            del self.leads[:-LEAD_KEEP]
+        t = self._tilt(wts, lead)
         if t is None:
             return self._skip("no_grid", wts)
         tilt, s, k, n_present, n_elapsed, age = t
@@ -181,13 +236,13 @@ class PreopenStrategy:
                                peak=None, peak_t=None, low=None, low_t=None,
                                first=None, hit={}, n=0)
         log.info("w%s PREOPEN %s x%.0f @ %.3f (tilt %+.2fbp, spot %.2f "
-                 "strike %.2f, grid %d/%d, spot age %ss)", wts, side,
-                 order.filled, order.price, tilt, s, k, n_present, n_elapsed,
-                 age if age is not None else "?")
+                 "strike %.2f, grid %d/%d, spot age %ss, lead %.2fs)", wts,
+                 side, order.filled, order.price, tilt, s, k, n_present,
+                 n_elapsed, age if age is not None else "?", lead)
         self.ledger.event("preopen_entry", json.dumps(
             {"w": wts, "side": side, "tilt": round(tilt, 3),
              "px": round(order.price, 4), "sz": round(order.filled, 1),
-             "lead": self.cfg.preopen_lead_s,
+             "lead": round(lead, 2),
              # what the bot could SEE when it decided — the only thing that
              # can differ from the archive once the maths is proven identical
              "cov": n_present, "el": n_elapsed, "age": age},

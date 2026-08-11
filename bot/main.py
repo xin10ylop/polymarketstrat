@@ -176,7 +176,11 @@ async def status(cfg, ledger, oracle, spot, clob, toll, snipe, preopen=None):
                  f"{snipe.last_fv:.4f}" if snipe.last_fv is not None else "n/a",
                  (f"off" if preopen is None or not cfg.preopen_enabled else
                   f"evals={preopen.evals} in={preopen.entries} "
-                  f"skip={preopen.skips} why={preopen.why}"), s)
+                  # the achieved lead belongs next to the eval count: a loop
+                  # that starts waking late shows up here as `worst` sliding
+                  # toward the floor, BEFORE it starts refusing windows
+                  f"skip={preopen.skips} lead[{preopen.lead_stats()}] "
+                  f"why={preopen.why}"), s)
 
 
 async def amain():

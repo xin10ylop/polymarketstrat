@@ -88,7 +88,7 @@ def main():
           f"(pass GATE= to match the unit), floor {CFG.preopen_min_coverage}\n")
     print(f"{'window':>12} {'live tilt':>10} {'archive':>10} {'diff':>8} "
           f"{'sign':>6} {'bot saw':>9} {'age':>4} {'side':>6}")
-    diffs, flips, missing, ages, covs = [], 0, 0, [], []
+    diffs, flips, missing, ages, covs, leads = [], 0, 0, [], [], []
     for j in sorted(live, key=lambda x: x["w"]):
         w = int(j["w"])
         lt = float(j["tilt"])
@@ -100,7 +100,13 @@ def main():
             covs.append(j["cov"] / j["el"])
         if age is not None:
             ages.append(age)
-        r = strat._tilt(w, lead)
+        if "lead" in j:
+            leads.append(float(j["lead"]))
+        # each entry records the lead it ACTUALLY used — the loop fires
+        # anywhere between the target and the floor, so assuming 3.0s here
+        # would compare the archive at T-3 against a bot that decided at
+        # T-1.4 and call the difference an error
+        r = strat._tilt(w, float(j.get("lead", lead)))
         if r is None:
             missing += 1
             print(f"{w:>12} {lt:>+9.2f}b {'refused':>10} {'':>8} {'':>6} "
@@ -132,6 +138,14 @@ def main():
     # a threshold's clothes.
     print(f"median error as a share of the gate: "
           f"{100*st.median(diffs)/gate:.0f}%")
+    if leads:
+        print(f"\nLEAD ACTUALLY ACHIEVED (n={len(leads)})")
+        ls = sorted(leads)
+        print(f"  target {lead:g}s   median {ls[len(ls)//2]:.2f}s   "
+              f"earliest {ls[-1]:.2f}s   latest {ls[0]:.2f}s")
+        print("  A spread here is the point: a late wake now trades at a")
+        print("  shorter lead instead of being dropped, and every fill is a")
+        print("  live observation of whether later is better.")
     if ages:
         print(f"\nWHAT THE BOT COULD SEE (n={len(ages)} entries carrying it)")
         print(f"  spot print age at decision : median {st.median(ages):.0f}s, "

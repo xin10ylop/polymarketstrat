@@ -163,7 +163,7 @@ print("\nthe touch tracker catches what three snapshots cannot")
 # The reason this exists: a resting limit sell fills on a momentary touch.
 # exit_curve could only read the book at T+2/T+15/T+30, so a spike between
 # those instants was invisible and its fill rates are lower bounds.
-from bot.strategies.preopen import PreopenStrategy      # noqa: E402
+from bot.strategies.preopen import LEAD_KEEP, PreopenStrategy   # noqa: E402
 
 
 class _State:
@@ -224,6 +224,82 @@ check("and when the low happened", _bad["low_t"], 6.0)
 check_true("no exit level was ever touched", not _bad["hit"])
 check_true("this is now distinguishable from a flat window",
            _bad["peak"] < 0.50, f"(peak {_bad['peak']} < entry 0.50)")
+
+print("\nthe firing window: late is fine, too late is recorded, never silent")
+# The old loop fired ONLY inside 0.0 <= (T-lead)-now <= 0.6 and dropped the
+# window otherwise. Over 19h that silently lost 22% of btc 5m evaluations and
+# 35% of eth's — no log line, no skip reason, invisible. These pin the
+# replacement: wait before the target, fire across the whole approach, refuse
+# and SAY SO once an order can no longer reach the book before the open.
+_T0 = 1_000_000
+_LEAD = CFG.preopen_lead_s
+_FLOOR = CFG.preopen_min_lead_s
+
+
+# calls the REAL decision function the run loop uses, not a copy of it
+_dp = PreopenStrategy(CFG, None, None, None, None, None, None)
+
+
+def _decide(now):
+    return _dp._when(now, _T0)
+
+
+check_true("well before the target lead: wait", _decide(_T0 - 10)[0] == "wait")
+check_true("a hair before the target: wait",
+           _decide(_T0 - _LEAD - 0.01)[0] == "wait")
+check_true("exactly at the target lead: fire",
+           _decide(_T0 - _LEAD)[0] == "fire")
+check_true("inside the OLD 0.6s slot: fire",
+           _decide(_T0 - _LEAD + 0.3)[0] == "fire")
+# the whole point: the old loop dropped this one on the floor
+check_true("1.5s late — old loop lost it, now fires",
+           _decide(_T0 - _LEAD + 1.5)[0] == "fire")
+check_true("at the floor itself: still fires",
+           _decide(_T0 - _FLOOR)[0] == "fire")
+check_true("past the floor: refused, not silent",
+           _decide(_T0 - _FLOOR + 0.01)[0] == "too_late")
+check_true("after the open entirely: refused",
+           _decide(_T0 + 5)[0] == "too_late")
+
+_, _l = _decide(_T0 - _LEAD)
+check("firing on time reports the target lead", _l, _LEAD)
+_, _l = _decide(_T0 - 1.25)
+check("firing late reports the ACTUAL lead, not the target", _l, 1.25)
+check_true("and that is shorter than the target, i.e. more of the strike",
+           _l < _LEAD, f"({_l}s vs {_LEAD}s target)")
+
+# a shorter lead must widen the elapsed strike window, or using it is pointless
+_o4 = Oracle(CFG)
+_o4.samples = {s: 100.0 for s in range(_T0 - CFG.oracle_twap_s - 5, _T0)}
+_o4.last_sample_s = max(_o4.samples)
+_s4 = PreopenStrategy(CFG, None, _o4, None, None, None, None)
+_at3 = _s4._tilt(_T0, 3.0)
+_at1 = _s4._tilt(_T0, 1.0)
+check("at a 3s lead the strike has 27 elapsed seconds", _at3[4], 27)
+check("at a 1s lead it has 29 — two more, which is the whole gain",
+      _at1[4], 29)
+
+# THE ONE LINE AN OPERATOR ACTUALLY READS. `worst` is the smallest achieved
+# lead — the latest the loop ever woke — because that is the number that
+# walks toward the floor when the box gets busy. Reporting the mean, or the
+# largest, would have stayed pinned at 3.00 straight through the bug.
+_dp.leads = []
+check_true("no evaluations yet says so rather than inventing a number",
+           _dp.lead_stats() == "n/a", f"({_dp.lead_stats()})")
+_dp.leads = [3.0, 3.0, 2.9, 0.8, 3.0]
+_ls = _dp.lead_stats()
+check_true("the median is the healthy case", "med=3.00" in _ls, f"({_ls})")
+check_true("and the worst is the one late wake, not the average",
+           "worst=0.80" in _ls, f"({_ls})")
+check_true("the target is shown beside it so late is legible as late",
+           f"tgt={CFG.preopen_lead_s:g}" in _ls, f"({_ls})")
+# a rolling window, or a regression takes days to move the median
+_dp.leads = []
+for _i in range(LEAD_KEEP + 250):
+    _dp.leads.append(3.0)
+    if len(_dp.leads) > LEAD_KEEP:
+        del _dp.leads[:-LEAD_KEEP]
+check("the lead history is bounded", len(_dp.leads), LEAD_KEEP)
 
 print("\nthe bot records how stale its own view was")
 # eth's live tilt differs from the archive's by a median 1.02bp against a

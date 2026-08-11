@@ -2252,3 +2252,57 @@ them in that order.
 
   btc 15m could not be scored: only 19 windows clear a 0.6bp pool gate in the
   grid so far. Revisit when the archive is roughly three times longer.
+
+- 2026-08-11 THE BOT WAS SILENTLY DROPPING A FIFTH OF ITS WINDOWS. Counting
+  evaluations against windows elapsed over 19 hours:
+
+      btc 5m    78% of its windows evaluated   (22% never looked at)
+      eth 5m    65%                            (35% never looked at)
+      btc 15m  101%
+      eth 15m  104%
+
+  (>100% is the restart re-evaluating the window in flight, not double
+  trading — `done` still gates entry.)
+
+  CAUSE. The run loop fired only inside a 0.6-second slot:
+  `if not (0.0 <= (nxt - lead) - now <= 0.6): sleep(0.05); continue`. The loop
+  polls at 20Hz, so missing that slot takes twelve consecutive iterations of
+  event-loop stall. The 5m units run their reconcile cycle three times as
+  often as the 15m units, which is exactly the split above. I did NOT isolate
+  the stalling call, and the fix does not depend on knowing it.
+
+  THE WORST PART WAS NOT THE LOSS, IT WAS THE SILENCE. A dropped window
+  incremented nothing — not `evals`, not `skips`, not `why`. Every diagnostic
+  in this repo reads those counters, so a fifth of the sample vanished with
+  no line of any kind, and it was found by counting windows against wall
+  clock rather than by any alarm.
+
+  FIX (bot/strategies/preopen.py `_when`). Fire anywhere between the target
+  lead and a floor, `PREOPEN_MIN_LEAD_S=0.5`, which is the time an order
+  still needs to reach the book before the open. Past the floor the window is
+  refused and LOGGED as `too_late` with how late the wake was. Nothing is
+  silent any more.
+
+  WHAT A LATE FIRE COSTS, and this is why widening is safe rather than a
+  compromise: a shorter lead holds MORE of the strike, not less — at T-3 the
+  30s window has 27 elapsed seconds, at T-1 it has 29 — so the tilt gets
+  more accurate as the lead shrinks. The measured risk runs the other way,
+  through the book, and it is already bounded: depth is unchanged from T-30
+  to T-1, and `preopen_max_px` refuses anything that has leaned, so a
+  repricing book costs a skipped trade rather than a bad fill.
+
+  THE FLOOR IS A PAPER FLOOR. 0.5s is fine when the executor fills instantly.
+  Before real money it must be re-set from measured round-trip latency to the
+  CLOB, or a late fire posts into a window that has already opened.
+
+  AND IT MAKES THE LEAD QUESTION ANSWERABLE. Each entry now records the lead
+  it ACTUALLY used (ledger `lead`, log `lead %.2fs`, STATUS
+  `lead[med= worst= tgt= n=]`, and a LEAD ACTUALLY ACHIEVED block in
+  tilt_parity). Every fill is now an observation of whether later is better,
+  from real entries instead of book snapshots — which is what the T-3 vs T-1
+  decision has been waiting on. `worst` is the SMALLEST achieved lead
+  deliberately: that is the number that slides toward the floor when the box
+  gets busy, and it would have shown this bug on day one.
+
+  UNCHANGED BY THIS: target lead still 3s, all four gates, coverage floor,
+  entry ceiling, sizing. One restart, tests first.
