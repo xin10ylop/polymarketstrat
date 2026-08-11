@@ -2961,3 +2961,41 @@ them in that order.
   strategy breaking. entry_ceiling now prints the in-sample vs out-of-sample
   edge even when the incumbent ceiling wins, because "the current ceiling is
   already the best cell" was hiding that collapse behind a reassuring line.
+
+- 2026-08-11 WHAT NOW: the plan, in priority order.
+
+  1. TEST THE BOOK-LEAN INVERSION ON THE ARCHIVE (bot/lean_test.py, built).
+     This is the only live observation that could change the strategy rather
+     than just measure it. preopen.py refuses a leaning book because "the
+     makers priced the tilt first and the edge shrinks one-for-one"; the
+     ledger says the dearest fills are the ones that WIN on both btc bots.
+     If a high ask means the book AGREES with the tilt, the ceiling is
+     discarding the good half and the rule should invert.
+     The ledger cannot settle it — 130 fills, eth disagreeing, every lower
+     bound negative. lean_test joins the book ARCHIVE to the tape outcomes,
+     which is many times the sample AND free of the ceiling's own selection,
+     because the archive holds the windows the bot REFUSED as well.
+     Smoke-tested against a planted effect: recovers dear 65.0% (+8.76c,
+     lower bound +1.93) vs cheap 45.5% (-5.75c), in both halves.
+     GATE ON ACTING: both time halves must agree AND both coins. One half or
+     one coin is the vol-scaled-gate shape, retracted twice.
+
+  2. LET THE FLEET RUN. Nothing to tune. From today the record is
+     uncensored, no windows are dropped and the tripwire no longer fires on
+     our own arithmetic. btc 5m needs ~39 days to sit 2sd from zero.
+
+  3. eth 5m IS DEMONSTRABLY LOSING (CI entirely below break-even) and agrees
+     with the 08-10 tape finding. Left running deliberately: it costs nothing
+     in paper and it is the control that makes btc's numbers meaningful.
+     Do NOT read its P&L as a fleet loss.
+
+  4. LATER, and each is a session: explain the 35%/30% coverage refusals
+     (a third of windows the tripwire cannot see, unexplained and not
+     obviously consistent with the 6.5%/10.1% blackout rate); re-price the
+     141 censored windows from the tape.
+
+  lean_test's out-of-sample split originally printed NOTHING when the asks
+  tied at the median — the "dear" half came out empty and the row was
+  skipped by a `continue`. Same silent-failure shape as the dropped windows
+  and the bare halt `continue`. It splits by RANK now, and says so when a
+  split is impossible rather than vanishing.
