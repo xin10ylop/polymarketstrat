@@ -242,9 +242,26 @@ class Config:
     # measurement error is ~0.05bp, and a 2bp band switched the mismatch
     # tripwire off on 34-71% of windows (audit D10). Tighter for the TWAP
     # families; the 1h family keeps the old band via its own env override.
-    oracle_tie_bps: float = _env("ORACLE_TIE_BPS",
-                                 0.3 if _env("FAMILY", "5m") in ("5m", "15m") else 2.0,
-                                 float)
+    # 2026-08-11: 0.3 WAS BELOW OUR OWN MEASUREMENT ERROR, so the tripwire
+    # fired on our arithmetic and halted the fleet. The "~0.05bp" above was an
+    # estimate, never measured. Measured on 809 settled windows across btc and
+    # eth: every one of the 9 disagreements lies within 0.421bp of a tie, and
+    # ZERO occur on windows decided by more than 1bp. Estimator and boundary
+    # alignment were both ruled out first (mismatch_audit, twap_align), so
+    # what is left is the residual of approximating a published TWAP STREAM
+    # with a uniform mean of 1s samples — structural, and not removable
+    # without subscribing to the stream.
+    #   btc clean at 0.4bp (11.3% of windows blinded), eth at 0.5bp (9.6%).
+    #   0.6 is one notch above the stricter of the two: it costs ~1 extra
+    #   point of blindness and buys headroom, because a band sitting AT the
+    #   observed maximum re-trips on the next slightly fatter residual.
+    # Above the band the tripwire reads 100% on all 809 windows, so nothing
+    # is given up in sensitivity to REAL defects — there are none up there.
+    # 15m IS NOT MEASURED and stays at 0.3 until it has its own sweep; a 60s
+    # mean should have a smaller residual, but should is not measured.
+    oracle_tie_bps: float = _env(
+        "ORACLE_TIE_BPS",
+        {"5m": 0.6, "15m": 0.3}.get(_env("FAMILY", "5m"), 2.0), float)
     # How long past window close the reconciler keeps polling gamma for the
     # official outcome before giving up (no_outcome). 5m/15m publish well
     # inside 10 min, but the 1h family resolves via UMA proposal ~11-13 min

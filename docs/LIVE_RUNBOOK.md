@@ -2690,3 +2690,47 @@ them in that order.
   the mismatch and restart btc. Do not pick a band because it silences the
   alarm; pick the smallest one with no false alarms and accept the blind
   fraction it costs.
+
+- 2026-08-11 ORACLE_TIE_BPS 0.3 -> 0.6 FOR THE 5m FAMILY, SET FROM THE
+  MEASUREMENT. Both coins' sweeps, on the windows the tripwire actually
+  calls:
+
+      band   btc blind   btc errors left | eth blind   eth errors left
+      0.3       9.8%           1         |    5.7%           2     <- was
+      0.4      11.3%           0         |    7.5%           1
+      0.5      12.8%           0         |    9.6%           0
+      0.6      13.5%           0         |   10.7%           0     <- now
+      2.0      38.7%           0         |   28.1%           0
+
+  btc is clean at 0.4, eth at 0.5, largest residual anywhere 0.421bp. 0.6 is
+  one notch above the stricter of the two: it costs about one extra point of
+  blindness and buys headroom, because a band sitting AT the observed maximum
+  re-trips on the next slightly fatter residual. Above the band the tripwire
+  reads 100% on all 809 windows, so nothing is given up in sensitivity to
+  REAL defects — there are none up there to find. Compare audit D10, where
+  2.0bp blinded 34-71%; at 0.6 it blinds 10-14%.
+
+  15m IS UNMEASURED and stays at 0.3. A 60s mean should carry a smaller
+  residual than a 30s one, but should is not measured, and both 15m units are
+  at _mismatches 0 so nothing forces the question. Run the same sweep on
+  bot/data/preopen-btc15 with FAMILY=15m before touching it.
+
+  scripts/clear_subband_mismatches.py acknowledges ONLY rows whose recomputed
+  margin is inside the band. Anything outside it, or any window the archive
+  cannot re-price, is REFUSED with a non-zero exit so a chained restart
+  cannot run behind it — "cannot check" is not "fine". Winner and
+  oracle_winner are never touched; only the flag, and every change writes a
+  mismatch_cleared row carrying the measured margin.
+
+  scripts/test_clear_subband.py exercises the refusal paths hardest, because
+  that is where the value is: dry run writes nothing, outside-band refuses
+  and exits 1, unpriceable refuses, and ONE bad row in a batch fails the
+  whole run even though the good rows cleared — the dangerous shape being a
+  genuine defect riding along with explainable ones while a zero exit lets
+  trading resume on it. The clearer takes REPO_ROOT so those paths can be
+  tested against fixtures instead of the live ledgers; code whose whole job
+  is refusing must be exercised doing it.
+
+  FIVE SUITES NOW GATE A PRE-OPEN DEPLOY:
+      test_preopen_strike  test_risk_shadow_stop  test_halt_audit
+      test_twap_align      test_clear_subband
