@@ -57,15 +57,22 @@ def unit_state(name):
                  f"polybot-{name}".replace("15", "-15m"),
                  f"polybot-{name}-15m"):
         try:
-            r = subprocess.run(["systemctl", "is-active", unit],
-                               capture_output=True, text=True, timeout=5)
+            # LoadState FIRST, not is-active. `systemctl is-active` answers
+            # "inactive" for a unit that does not exist, which is
+            # indistinguishable from one that exists and is stopped — so
+            # taking the first candidate's answer marked the live
+            # preopen-btc15 bot as retired and dropped it from the censoring
+            # total. LoadState says not-found, so the loop moves on.
+            r = subprocess.run(
+                ["systemctl", "show", unit, "-p", "LoadState",
+                 "-p", "ActiveState", "--value"],
+                capture_output=True, text=True, timeout=5)
         except (OSError, subprocess.SubprocessError):
             return "unknown"
-        out = r.stdout.strip()
-        if out == "active":
-            return "active"
-        if out in ("inactive", "failed"):
-            return "stopped"
+        vals = r.stdout.split()
+        if len(vals) < 2 or vals[0] == "not-found":
+            continue
+        return "active" if vals[1] == "active" else "stopped"
     return "unknown"
 
 

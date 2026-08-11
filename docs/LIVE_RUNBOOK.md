@@ -2531,3 +2531,53 @@ them in that order.
   NEXT, AND NOT A TONIGHT JOB: re-price the 141 censored windows from the
   tape archive. Until then btc 5m's +$163 / 56% is an upper bound and its
   -$580 drawdown is a lower bound.
+
+- 2026-08-11 22:55 OVERNIGHT CHECK — THE FIRING FIX HOLDS, AND A MISMATCH
+  HALT FIRED. All four bots active, all four achieving lead med 2.96-2.97s
+  worst 2.95s against a 3s target, and NOT ONE `missed` or `too_late` in any
+  why histogram. The band widening did its job and is not being leaned on.
+
+      btc 5m    evals 85  in 29  130 fills  +471.38   _mismatches 1
+      btc 15m   evals 42  in 12   63 fills  +574.99   _mismatches 0
+      eth 5m    evals 31  in  4   69 fills  -542.30   _mismatches 2
+      eth 15m   evals 42  in  2    9 fills   -46.29   _mismatches 0
+
+  btc is HALTED since 19:21 on "oracle/exchange winner mismatch" (3.57h and
+  counting), eth shows why={'halted': 97}. This is the halt deliberately left
+  biting in paper, working as designed — but it is now the single most
+  important open question in the project, because a mismatch means our read
+  of who won disagrees with the exchange's, and that would make every
+  backtest number here a fiction.
+
+  THE TRIPWIRE IS ALREADY GUARDED, which is what makes this serious rather
+  than routine: main.py suppresses windows decided by under ORACLE_TIE_BPS
+  (0.3), and twap_winner refuses on thin coverage or when the two boundary
+  conventions disagree. A flagged window was DECIDED.
+
+  THE HYPOTHESIS, AND IT IS A DEFECT WE ALREADY KNOW THE SHAPE OF. The
+  settlement path calls oracle.twap_at, which averages only the seconds that
+  are PRESENT — the RESCALING estimator. The ENTRY path calls
+  oracle.twap_carry, which carries the last print into each hole, and was
+  measured 4x more accurate on btc and 5.5x on eth with rescaling drifting up
+  to 0.377bp in its worst bucket. ORACLE_TIE_BPS is 0.3. So rescaling's own
+  error can EXCEED the band meant to keep marginal windows from being
+  flagged: a window decided by ~0.35bp could be miscalled by our imputation,
+  clear the tie filter, and register as a mismatch that no real disagreement
+  caused. THE BOT TRADES ON ONE ESTIMATOR AND AUDITS ITSELF WITH A WORSE ONE.
+
+  bot/mismatch_audit.py tests it. It re-derives every flagged window from the
+  grid archive under BOTH estimators and, because three windows cannot
+  separate two estimators, scores every settled window under both against the
+  official outcome. Smoke-tested against a synthetic window built so the two
+  land on opposite sides of the open at exactly the 0.9 coverage floor:
+  rescaled 50%, carried 100%, as constructed.
+
+  DO NOT CLEAR THE HALT BEFORE READING IT. If carry-forward agrees with the
+  exchange, the fix is to settle with the estimator we trade with. If it also
+  disagrees, the hypothesis is dead and the problem is real.
+
+  ALSO FIXED: halt_audit called the live preopen-btc15 unit "stopped".
+  `systemctl is-active` answers "inactive" for a unit that does not exist,
+  which is indistinguishable from one that exists and is stopped, so the
+  first candidate name settled it. It now reads LoadState first and skips
+  not-found names.
