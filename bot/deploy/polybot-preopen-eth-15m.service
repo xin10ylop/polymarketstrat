@@ -1,0 +1,48 @@
+[Unit]
+Description=Polymarket PRE-OPEN paper bot (eth 15m) - buy the tilt side before the window opens
+After=network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=600
+StartLimitBurst=20
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/polymarketstrat
+Environment=BOT_MODE=paper
+Environment=COIN=eth
+Environment=FAMILY=15m
+Environment=WINDOW_SECS=900
+Environment=SLUG_PREFIX=eth-updown-15m
+Environment=SPOT_FEED=coinbase
+Environment=PREOPEN_ENABLED=1
+Environment=SNIPE_ENABLED=0
+Environment=TOLL_ENABLED=0
+Environment=BOT_DATA_DIR=/opt/polymarketstrat/bot/data/preopen-eth15
+Environment=PREOPEN_LEAD_S=3
+# 1.7bp, and this number is a PREDICTION being tested rather than a fit. The
+# gate that works scales with how far price can travel inside the window:
+# ~0.31 * (per-second vol) * sqrt(window seconds). eth runs 0.185 bp/s against
+# btc's 0.108, and a 15m window is 900s, so 0.31 * 0.185 * 30 = 1.72bp. The
+# same formula says btc 15m wants 1.00 (set 1.0), eth 5m wants 0.99 (set 1.0)
+# and btc 5m wants 0.58 (set 0.5) — all three already correct.
+#
+# The sweep then confirmed it out of sample: at 1.0bp this family settles
+# 61.9% for +8.76c/share, at 1.7bp it settles 69.6% for +17.39c, and the
+# out-of-sample half came in ABOVE the in-sample half (+22.63c vs +11.66c),
+# which is the only cell on this project to do that.
+#
+# WHAT IS NOT ESTABLISHED: the 95% floor is -1.73c on 35 windows, and 34% of
+# eth 15m windows have no pre-open prints at all. This is an experiment, not
+# a validated strategy, and it is sized like one.
+Environment=PREOPEN_TILT_MIN_BP=1.7
+Environment=PREOPEN_MAX_PX=0.56
+Environment=PREOPEN_CLIP=250
+Environment=LOG_LEVEL=INFO
+Environment=MAX_DAILY_LOSS=250
+ExecStart=/opt/polymarketstrat/venv/bin/python -m bot.main
+Restart=always
+RestartSec=10
+MemoryMax=200M
+
+[Install]
+WantedBy=multi-user.target
