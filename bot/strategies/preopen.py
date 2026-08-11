@@ -58,7 +58,8 @@ class PreopenStrategy:
         self.exec = executor
         self.ledger = ledger
         self.risk = risk
-        self.done = set()          # windows already acted on
+        self.done = set()          # windows accounted for: entered OR declined
+        self.last_nxt = None       # the window the loop last had in its sights
         self.marks = {}            # wts -> entry info, for post-open telemetry
         self.evals = self.entries = self.skips = 0
         self.why = {}
@@ -100,6 +101,32 @@ class PreopenStrategy:
         ls = sorted(self.leads)
         return (f"med={ls[len(ls) // 2]:.2f} worst={ls[0]:.2f} "
                 f"tgt={self.cfg.preopen_lead_s:g} n={len(ls)}")
+
+    def _roll(self, now, nxt, T):
+        """Per-window bookkeeping. Returns the window that rolled past
+        unaccounted-for, or None.
+
+        THE BACKSTOP. `done` means "accounted for" — entered, refused, or
+        declined, every one of them counted and logged. So a window that
+        rolls past WITHOUT entering it was never reached at all, and that is
+        the one failure the counters cannot otherwise show. It is not
+        hypothetical: a stall spanning the whole approach AND the open leaves
+        `nxt` already advanced by the time the loop breathes, so even the
+        too_late branch never sees it. This is the last silent path.
+        """
+        if nxt == self.last_nxt:
+            return None
+        missed = None
+        if self.last_nxt is not None and self.last_nxt not in self.done:
+            missed = self.last_nxt
+            self.done.add(missed)
+        # pruned HERE, once per window, rather than on the entry path: a bot
+        # halted all day never reaches the entry path, and would grow `done`
+        # without bound on exactly the days it is already unhappy
+        if len(self.done) > 500:
+            self.done = {w for w in self.done if w > now - 4 * T}
+        self.last_nxt = nxt
+        return missed
 
     def _tilt(self, open_s, lead):
         """(tilt_bp, spot, strike) using ONLY what exists at open_s - lead.
@@ -158,10 +185,24 @@ class PreopenStrategy:
                     # telemetry must never be able to stop the trading loop
                     self.marks.pop(wts, None)
                     log.warning("w%s preopen track error: %s", wts, e)
-            if nxt in self.done or not self.cfg.preopen_enabled:
+            if not self.cfg.preopen_enabled:
                 await asyncio.sleep(0.2)
                 continue
+            missed = self._roll(now, nxt, T)
+            if missed is not None:
+                self._skip("missed", missed,
+                           "the loop never reached this window's firing range")
+            if nxt in self.done:
+                await asyncio.sleep(0.2)
+                continue
+            # A HALT IS A DECISION, SO IT GETS COUNTED LIKE ONE. This was a
+            # bare `continue`: no counter, no log. A bot halted on the daily
+            # loss breaker therefore printed evals=0 skip=0 why={} — character
+            # for character what a BROKEN bot prints. Distinguishing those two
+            # cost an hour it should have cost a glance.
             if self.risk.halted("preopen"):
+                self.done.add(nxt)
+                self._skip("halted", nxt, "risk halt in force")
                 await asyncio.sleep(1.0)
                 continue
             # The previous version fired ONLY inside a 0.6s slot at T-lead and
@@ -187,9 +228,6 @@ class PreopenStrategy:
                 self._enter(nxt, actual)
             except Exception as e:  # noqa: BLE001
                 log.warning("w%s preopen error: %s", nxt, e)
-            # keep `done` from growing forever
-            if len(self.done) > 500:
-                self.done = {w for w in self.done if w > now - 4 * T}
 
     # ------------------------------------------------------------------
     def _enter(self, wts, lead=None):

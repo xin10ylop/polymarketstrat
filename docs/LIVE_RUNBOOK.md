@@ -2306,3 +2306,43 @@ them in that order.
 
   UNCHANGED BY THIS: target lead still 3s, all four gates, coverage floor,
   entry ceiling, sizing. One restart, tests first.
+
+- 2026-08-11 A HALTED BOT AND A BROKEN BOT PRINTED THE SAME LINE. Ten minutes
+  after deploying the firing-window fix, btc 5m showed 2 windows elapsed, 0
+  evals, and — the tell — zero log lines in 25 minutes, including from the
+  process BEFORE the restart. The other three were clean (eth 5m 2/2, both
+  15m fired w1786449600 on the new code).
+
+  In bot/strategies/preopen.py the halt check was a bare continue:
+
+      if self.risk.halted("preopen"):
+          await asyncio.sleep(1.0)
+          continue
+
+  No counter, no log. So a bot stopped by the daily-loss breaker printed
+  `preopen[evals=0 in=0 skip=0 lead[n/a] why={}]` — character for character
+  what a bot with a dead run loop prints. Same defect class as the dropped
+  windows, different branch: a decision the code makes and does not record.
+  It now increments `skips` and reports `why={'halted': N}`.
+
+  AND THE LAST SILENT PATH IS CLOSED TOO. Widening the firing band does not
+  cover a stall spanning the approach AND the open: `nxt` has already
+  advanced by the time the loop breathes, so even too_late never sees that
+  window. `done` now means ACCOUNTED FOR — entered, refused, declined — and
+  `_roll()` reports any window that rolls past without entering it as
+  `why={'missed': N}`. There is no longer any path through the loop that
+  loses a window without saying so.
+
+  `done` pruning moved out of the entry path into `_roll`, because a bot
+  halted all day never reaches the entry path and would grow the set without
+  bound on exactly the days it is already unhappy.
+
+  THE SUSPICION THIS RAISES, NOT YET CONFIRMED. risk.py halts scope "all" on
+  `pnl < -max_daily_loss`, and in paper mode that lifts only at the next UTC
+  day. If the pre-open paper bots have been halting on bad days, then every
+  sample quoted from their ledgers is CENSORED — bad days truncated at the
+  breaker, good days recorded in full — which would bias every live win rate
+  and every drawdown figure optimistically. A capital-preservation rule on a
+  measurement instrument destroys the measurement. Confirm from the HALT
+  events before trusting any live pre-open number, and decide separately
+  whether a PAPER research bot should carry a daily breaker at all.

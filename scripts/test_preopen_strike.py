@@ -301,6 +301,52 @@ for _i in range(LEAD_KEEP + 250):
         del _dp.leads[:-LEAD_KEEP]
 check("the lead history is bounded", len(_dp.leads), LEAD_KEEP)
 
+print("\nno window leaves the loop unaccounted for")
+# Widening the firing band does not close the LAST silent path: a stall that
+# spans the approach AND the open leaves `nxt` already advanced by the time
+# the loop breathes, so even too_late never sees that window. `done` means
+# accounted-for; anything that rolls past without entering it is reported.
+_T5 = 300
+_rp = PreopenStrategy(CFG, None, None, None, None, None, None)
+check_true("the very first pass invents no missed window",
+           _rp._roll(_T0 - 100, _T0, _T5) is None)
+check_true("and repeated passes at the same window stay quiet",
+           _rp._roll(_T0 - 99, _T0, _T5) is None)
+# the window was acted on, so rolling to the next one is silent
+_rp.done.add(_T0)
+check_true("a window that WAS accounted for is not reported missed",
+           _rp._roll(_T0 + 1, _T0 + _T5, _T5) is None)
+# now let one roll past untouched — the stall case
+_missed = _rp._roll(_T0 + _T5 + 1, _T0 + 2 * _T5, _T5)
+check("a window that rolled past untouched is named", _missed, _T0 + _T5)
+check_true("and is then marked accounted-for so it reports once, not forever",
+           (_T0 + _T5) in _rp.done)
+check_true("re-rolling does not report it a second time",
+           _rp._roll(_T0 + 2 * _T5 + 1, _T0 + 3 * _T5, _T5) != _T0 + _T5)
+
+# A HALTED BOT MUST NOT LOOK LIKE A BROKEN ONE. Before this, risk.halted()
+# was a bare `continue`: no counter, no log. btc 5m sat halted on the daily
+# breaker printing evals=0 skip=0 why={} — character for character what a
+# crashed loop prints. That ambiguity is the whole reason this was not
+# obvious on sight.
+_hp = PreopenStrategy(CFG, None, None, None, None, None, None)
+_hp._skip("halted", _T0, "risk halt in force")
+check("a halt increments the skip counter", _hp.skips, 1)
+check("and names itself in the why histogram", _hp.why.get("halted"), 1)
+check_true("so STATUS can never show a halted bot as an idle one",
+           _hp.why != {} and _hp.skips > 0, f"(why={_hp.why})")
+
+# `done` must stay bounded on a bot that is halted all day and so never
+# reaches the entry path where pruning used to live
+_bp = PreopenStrategy(CFG, None, None, None, None, None, None)
+_nowb = _T0
+for _i in range(700):
+    _nowb = _T0 + _i * _T5
+    _bp._roll(_nowb, _nowb + _T5, _T5)
+    _bp.done.add(_nowb + _T5)          # every window declined by the halt
+check_true("done stays bounded across 700 halted windows",
+           len(_bp.done) <= 501, f"({len(_bp.done)} entries)")
+
 print("\nthe bot records how stale its own view was")
 # eth's live tilt differs from the archive's by a median 1.02bp against a
 # 1.0bp gate, btc's by 0.08bp. With the maths proven identical the only
