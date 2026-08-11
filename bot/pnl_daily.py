@@ -69,6 +69,24 @@ def main():
         if not rows:
             print(f"{name}: no settled fills yet\n")
             continue
+        # DRAWDOWN MUST COME FROM THE FILL-LEVEL CURVE, NOT THE DAILY ONE.
+        # The first version reported day-END equity only, and on btc 5m that
+        # turned a real -$580.18 drawdown from a +$743.34 peak into
+        # "-0.46 (0% of peak)" — because the day CLOSED at +471.84 having run
+        # up to +743 and back inside it. A daily series cannot see a round
+        # trip that starts and finishes inside one day, and drawdown is the
+        # whole reason this tool exists.
+        curve = db.execute(
+            "SELECT ts, pnl FROM fills WHERE pnl IS NOT NULL ORDER BY ts"
+        ).fetchall()
+        eq = pk_f = 0.0
+        worst_f, worst_at, pk_at = 0.0, None, None
+        for ts, pnl in curve:
+            eq += pnl
+            if eq > pk_f:
+                pk_f, pk_at = eq, ts
+            if eq - pk_f < worst_f:
+                worst_f, worst_at = eq - pk_f, ts
         marks = dark_days(db)
         # PEAK AND DRAWDOWN OVER THE WHOLE HISTORY, not just the printed tail:
         # a drawdown measured from inside a window is not a drawdown.
@@ -97,13 +115,27 @@ def main():
             print(f"{day:<12} {n:>6} {wr:>6} {pnl:>+10.2f} {c:>+11.2f} "
                   f"{pk:>+10.2f} {dd:>+10.2f}{tag}")
         print(f"{'':<12} {'':>6} {'':>6} {'':>10} {'':>11} "
-              f"{'worst DD':>10} {worst:>+10.2f}")
-        if peak > 0:
-            print(f"lifetime {hist[-1][5]:+.2f}   peak {peak:+.2f}   "
-                  f"worst drawdown {worst:+.2f} "
-                  f"({100*abs(worst)/peak:.0f}% of peak)")
+              f"{'day-end DD':>10} {worst:>+10.2f}")
+        print(f"lifetime {hist[-1][5]:+.2f}   peak (day-end) {peak:+.2f}")
+        # THE NUMBER TO SIZE AGAINST is the intraday one. A day-end series
+        # says btc 5m never drew down; the fill-level curve says it gave back
+        # 78% of its peak. Both are printed so the gap between them is
+        # visible rather than something you have to know to look for.
+        if pk_f > 0:
+            when = (time.strftime("%m-%d %H:%M", time.gmtime(worst_at))
+                    if worst_at else "-")
+            print(f"INTRADAY (fill by fill, {len(curve)} fills): "
+                  f"peak {pk_f:+.2f} at "
+                  f"{time.strftime('%m-%d %H:%M', time.gmtime(pk_at))}, "
+                  f"worst drawdown {worst_f:+.2f} at {when} "
+                  f"({100*abs(worst_f)/pk_f:.0f}% of peak)")
+            if abs(worst_f) > abs(worst) * 2 and abs(worst_f) > 1:
+                print(f"  ^ the daily row above shows {worst:+.2f}. The round")
+                print("    trip happened INSIDE a day, so only this line sees")
+                print("    it. Size against this one.")
         else:
-            print(f"lifetime {hist[-1][5]:+.2f}   never above water")
+            print(f"INTRADAY: never above water "
+                  f"(worst {min([0.0] + [w for w in [worst_f]]):+.2f})")
         print("* = today, still open\n")
 
     print("pnl_today= in the STATUS line is the '*' row only and resets at")

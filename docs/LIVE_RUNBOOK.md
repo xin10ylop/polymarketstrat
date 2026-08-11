@@ -2796,3 +2796,43 @@ them in that order.
   version printed the FINAL peak on every row, so an early row claimed a peak
   it had not reached yet and its drawdown column was unreadable — the running
   peak is the only one that means anything per row.
+
+- 2026-08-11 pnl_daily's DRAWDOWN WAS WRONG ON ITS FIRST RUN, and wrong in
+  the flattering direction. It reported btc 5m "worst drawdown -0.46 (0% of
+  peak)" when the real figure is -580.18 from a +743.34 peak — the number I
+  had already reported correctly on 08-10 and then contradicted with a tool
+  built to show exactly this.
+
+  CAUSE: it aggregated by day and measured drawdown on DAY-END equity. The
+  08-10 round trip started and finished inside one day, which closed at
+  +471.84, so a daily series cannot see it at all. Drawdown is the entire
+  reason the tool exists, and it was computed on the one series that cannot
+  show it.
+
+  It now walks the fill-level curve and prints BOTH, with the gap called out
+  when the intraday figure is materially worse. Smoke-tested against that
+  exact shape: day-end DD +0.00, intraday peak +743.34, worst -580.18, 78%.
+
+  GENERAL LESSON, and it is the third time this pattern has appeared today:
+  a summary statistic computed at the wrong granularity is not a smaller
+  version of the right one, it is a different number that happens to look
+  plausible. Rate-averaged feed gaps hid an 18-minute blackout; day-averaged
+  equity hid a 78% drawdown; cumulative-at-check-in hid the same thing
+  earlier. Whenever a number is meant to catch a bad episode, compute it at
+  the granularity the episode happens at.
+
+- 2026-08-11 ALL-TIME P&L, and what it is worth. Four bots, TWO DAYS of data:
+      btc 5m   130 fills  +471.38    btc 15m   63 fills  +574.99
+      eth 5m    69 fills  -542.30    eth 15m    9 fills   -46.29
+      TOTAL                                             +457.78
+  Reasons not to read that as an edge yet:
+    - two days. Not a sample.
+    - btc 15m's entire result is one 91%-of-22-fills day (+776.81) followed
+      by 46% of 41 (-201.82). The first day is not repeatable and the second
+      is what the strategy looks like without luck.
+    - both eth bots have never been above water.
+    - every pre-08-11 day is censored by the daily breaker.
+  btc 5m at 56% on 130 fills against a ~53.6% break-even is the only cell
+  that is both positive and plausible, and 130 fills cannot separate 56% from
+  break-even. The tape backtest, not these ledgers, is still the instrument
+  with any power.
