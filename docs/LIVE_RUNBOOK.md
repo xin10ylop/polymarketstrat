@@ -2866,3 +2866,46 @@ them in that order.
   Hand-checked before use: Wilson(50,100) = [40.4, 59.6] against the
   textbook value, break-even(0.5187) = 53.62% against the figure derived on
   08-10, and n=0 returns (0,0) rather than dividing by zero.
+
+- 2026-08-11 THE ENTRY PRICE IS THE STORY, AND THE CEILING IS TOO LOOSE.
+  Fleet results ranked by average entry price, and they rank together:
+
+      bot       entry    break-even   win rate   verdict
+      btc 15m   0.5061     52.35%      61.9%     best bar, best result
+      btc 5m    0.5244     54.19%      56.2%     straddles
+      eth 5m    0.5338     55.12%      42.0%     BELOW b/e at 95%
+      eth 15m   0.5471     56.45%      55.6%     worst bar
+
+  The bar moves 52.35% -> 56.45%, a four-point swing, LARGER THAN ANY EDGE
+  BEING MEASURED. The strategy docstring says the pre-open book is "flat and
+  symmetric, ~0.50 a side"; we are paying up to 0.5471.
+
+  PREOPEN_MAX_PX IS 0.56 ON ALL FOUR UNITS. Break-even at 0.56 is 57.73% —
+  above the best settle rate this strategy has ever measured (60.4%, and that
+  was the whole-sample figure, not the marginal one). The ceiling is
+  admitting trades that cannot pay, and every one of them drags the average
+  entry up and the measured win rate down.
+
+  bot/entry_ceiling.py sweeps it on the recorded fills. This is a legitimate
+  backtest rather than curve-fitting: the entry price is observable BEFORE
+  the trade — the bot already compares best_ask to the ceiling — so dropping
+  fills above a tighter ceiling is a question we could have answered in
+  advance, not a selection on the outcome. The sweep can only go DOWN from
+  0.56 because no data exists above it. Best cell picked on the first half of
+  each ledger, reported on the second.
+
+  Smoke-tested against a planted price effect (cheap fills 60%, dear fills
+  50%): it recovers the tight ceiling, and the tighter ceiling earns MORE
+  total P&L on half the fills because the expensive ones are net negative.
+
+  THE FIRST STATISTICALLY SIGNIFICANT RESULT IN THE FLEET, and it is a
+  negative one: eth 5m is 29/69 = 42.0%, 95% CI [31.1, 53.8] against a
+  55.12% break-even. The upper bound is BELOW the bar. That is a losing
+  configuration, not an unlucky one, and it agrees with the 08-10 tape
+  finding that eth's floor was -0.05c and did not clear. Everything else in
+  the fleet still straddles.
+
+  A CAUTION ON "37 more fills, roughly 1 day" FOR btc 15m: that projection
+  assumes the observed 61.9% is the true rate, and 61.9% comes from a 91%-of-
+  22-fills day followed by 46% of 41. The two days are inconsistent at
+  p ~ 0.0005. Do not expect resolution tomorrow; expect the rate to fall.
