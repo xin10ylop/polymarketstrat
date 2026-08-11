@@ -73,6 +73,18 @@ check("a settlement-healer row is not revival", (per[0][1], per[0][3]),
 per, _ = spans(db([(50, "preopen_entry", "x"), (100, "HALT", "daily")]))
 check("a trade BEFORE the halt is not revival", per[0][1], None)
 
+per, _ = spans(db([(100, "HALT", "daily"), (700, "start", "")]))
+check("a bare restart is not revival either", (per[0][1], per[0][3]),
+      (None, None))
+# THE EXACT PRODUCTION CASE `start` GOT WRONG: btc 5m restarted at 11:50,
+# re-halted at 11:51:15 because the losing day was still the losing day, and
+# only came back at 12:17 when the shadow-stop deploy landed. Counting the
+# restart closed the outage 27 minutes early.
+per, _ = spans(db([(100, "HALT", "daily"), (200, "start", ""),
+                   (210, "HALT", "daily"), (500, "SHADOW_HALT", "daily")]))
+check("restart-then-rehalt is ONE outage ending at the real revival",
+      (len(per), per[0][0], per[0][1]), (1, 100, 500))
+
 print("\none dark period, however many times the breaker re-fires")
 # every restart re-derives the same losing day and re-halts; three HALT rows
 # are one outage, not three
@@ -80,6 +92,15 @@ per, _ = spans(db([(100, "HALT", "daily"), (200, "HALT", "daily"),
                    (300, "HALT", "daily")]))
 check("repeated HALT rows collapse to one period", len(per), 1)
 check("starting at the first", per[0][0], 100)
+
+# ...but collapsing must not swallow a GENUINE second outage. If the bot
+# traded in between, those are two separate dark periods and reporting one
+# would hide the whole of the second.
+per, _ = spans(db([(100, "HALT", "daily"), (200, "preopen_entry", "x"),
+                   (300, "HALT", "daily")]))
+check("trading in between splits it into two outages", len(per), 2)
+check("the first ends at the trade", (per[0][0], per[0][1]), (100, 200))
+check("the second is still open", (per[1][0], per[1][1]), (300, None))
 
 print("\nnothing invented from a clean ledger")
 check("no halts, no shadows", spans(db([(100, "start", "")])), ([], []))

@@ -83,18 +83,32 @@ def spans(db):
     HALT but the ledger does not link them by id, so this pairs strictly in
     time order.
     """
-    # PROOF THE LOOP WAS ALIVE AGAIN. A halt cleared by a RESTART writes no
+    # PROOF THE STRATEGY LOOP RAN AGAIN. A halt cleared by a RESTART writes no
     # HALT_LIFTED — the in-memory halt set is simply gone — so an unlifted
-    # halt has no end marker and would run to the present for ever, growing
-    # by an hour every hour. These kinds cannot be written by a halted bot,
-    # so the first one after a halt starts is the moment it came back.
-    # Deliberately NOT every event kind: the settlement healer writes rows
-    # while a bot is halted, and counting those would end the dark period
-    # early — this errs toward reporting MORE censoring, never less.
-    alive = ("preopen_entry", "preopen_mark", "SHADOW_HALT", "start")
-    revive = [ts for ts, k in db.execute(
-        "SELECT ts, kind FROM events WHERE kind IN "
+    # halt has no end marker and would run to the present for ever, growing by
+    # an hour every hour.
+    #
+    # THE LIST IS SHORT ON PURPOSE, and getting it wrong has bitten in both
+    # directions. `start` was in it once: a restart writes `start` whether or
+    # not the bot then trades, and btc 5m restarted at 11:50, re-halted at
+    # 11:51:15 and stayed dark until 12:17 — so `start` closed the outage 27
+    # minutes early. The settlement healer (late_settlement, no_outcome) runs
+    # while a bot is halted and would do the same. Only rows a HALTED bot
+    # provably cannot write belong here: two the pre-open strategy writes
+    # after its halt check, and SHADOW_HALT, which the risk manager writes
+    # only when it has decided NOT to halt.
+    #
+    # Ending a dark period early UNDERSTATES the censoring, which is the
+    # direction that makes a bad ledger look usable. When in doubt, leave a
+    # kind out and let the period run long.
+    alive = ("preopen_entry", "preopen_mark", "SHADOW_HALT")
+    revive = [ts for (ts,) in db.execute(
+        "SELECT ts FROM events WHERE kind IN "
         f"({','.join('?' * len(alive))}) ORDER BY ts", alive)]
+
+    def back_after(t):
+        return next((r for r in revive if r > t), None)
+
     rows = list(db.execute(
         "SELECT ts, kind, detail FROM events "
         "WHERE kind IN ('HALT','HALT_LIFTED','SHADOW_HALT') ORDER BY ts"))
@@ -104,13 +118,24 @@ def spans(db):
         if kind == "SHADOW_HALT":
             shadows.append((ts, detail))
         elif kind == "HALT":
-            if open_at is None:                  # a re-halt after a restart
-                open_at, open_why = ts, detail   # is the same dark period
+            if open_at is None:
+                open_at, open_why = ts, detail
+                continue
+            # A SECOND HALT IS EITHER THE SAME OUTAGE OR A NEW ONE, and the
+            # difference is whether the bot traded in between. Every restart
+            # re-derives the same losing day and writes another HALT row, so
+            # treating them all as new outages would multiply one bad day
+            # into a dozen; treating them all as one would swallow a genuine
+            # second outage whole. The revival is what separates them.
+            back = back_after(open_at)
+            if back is not None and back < ts:
+                out.append((open_at, back, open_why, "restart"))
+                open_at, open_why = ts, detail
         elif kind == "HALT_LIFTED" and open_at is not None:
             out.append((open_at, ts, open_why, "lifted"))
             open_at, open_why = None, ""
     if open_at is not None:
-        back = next((t for t in revive if t > open_at), None)
+        back = back_after(open_at)
         out.append((open_at, back, open_why, "restart" if back else None))
     return out, shadows
 

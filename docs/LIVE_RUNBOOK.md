@@ -2470,3 +2470,31 @@ them in that order.
   NEXT, AND NOT TONIGHT: re-price the 142 censored windows from the tape
   archive so the live ledgers can be compared against an uncensored estimate.
   Until that is done the btc 5m +$163/56% figure is an upper bound.
+
+- 2026-08-11 halt_audit, FOURTH CORRECTION — `start` IS NOT PROOF OF LIFE.
+  Its own output gave it away: btc 5m's outage closed at 11:50 when the
+  journal plainly shows a re-halt at 11:51:15 and no trading until 12:17. A
+  restart writes a `start` row whether or not the bot then resumes, and this
+  bot restarted straight back into the same losing day. It shortened the real
+  outage by 27 minutes, and did the same to snipe-sol (165.74h -> 15.16h) and
+  snipe (180.55h -> 60.49h).
+
+  ENDING A DARK PERIOD EARLY UNDERSTATES CENSORING, which is the direction
+  that makes a bad ledger look usable — the opposite of what this tool is
+  for. The revival list is now only rows a HALTED bot provably cannot write:
+  preopen_entry, preopen_mark, and SHADOW_HALT (which the risk manager writes
+  only when it has decided NOT to halt). When in doubt, leave a kind out and
+  let the period run long.
+
+  THE SAME PASS FIXED A BUG IN THE OTHER DIRECTION. Collapsing consecutive
+  HALT rows into one outage — correct, since every restart re-derives the
+  same losing day and writes another HALT — swallowed a GENUINE second
+  outage whole when the bot had traded in between. The revival is what
+  separates them: a HALT after a revival opens a new period, a HALT without
+  one continues the old.
+
+  This tool has now been wrong four times in one afternoon, in both
+  directions, while being the instrument that decides how much to trust
+  everything else. Its pairing rules are pinned by 15 assertions covering
+  every case that has actually bitten. Do not change `alive` without adding
+  one.
