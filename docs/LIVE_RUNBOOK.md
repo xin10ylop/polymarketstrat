@@ -2403,3 +2403,35 @@ them in that order.
 
   bot/halt_audit.py reports dark time and windows lost per ledger, so the
   censored intervals can be re-priced from the tape rather than guessed at.
+
+- 2026-08-11 CORRECTION TO halt_audit's FIRST OUTPUT. Its first run reported
+  1,022 dark hours and 12,270 windows never evaluated across the fleet. That
+  number is wrong and was mine: the tool ran every halt with no recorded lift
+  forward to the present instant, so RETIRED units — the snipe-* ledgers,
+  whose services were removed in early August — reported 601h, 225h, 106h and
+  77h apiece for time in which they did not exist. A halt with no lift means
+  the bot never recorded coming back; it does not mean the bot is still
+  sitting there halted.
+
+  The real figure, across the two bots that exist and were censored:
+      preopen-btc  5.02h   60 windows
+      preopen-eth  6.79h   81 windows
+      TOTAL              141 windows
+  Two orders of magnitude below the first print. The conclusion is unchanged
+  — those ledgers are censored and their win rates are upper bounds — but the
+  scale is not, and 141 windows is a re-pricing job rather than a crisis.
+
+  A halted bot writes nothing, so file mtime cannot tell a live-but-halted
+  bot from a deleted one; only the service manager can. The tool now asks
+  systemctl and reports three states: active (dark runs to now), stopped
+  (dark bounded at the last ledger write), and unknown — no systemctl or an
+  unrecognised unit name — which prints a RANGE rather than picking an end
+  and calling it a measurement.
+
+  WORTH KNOWING, NOT WORTH CHASING: two retired snipe ledgers carry sticky
+  "oracle/exchange winner mismatch" halts, snipe-sol from 08-02 and
+  snipe-btc15 from 08-08 06:50. The latter is thirty-one hours after the
+  TWAP rule change, which is what a pre-migration oracle reading spot against
+  a TWAP settlement looks like; scripts/clear_rule_change_mismatches.py
+  exists for exactly this. The current pre-open bots are unaffected — 0
+  mismatches across 214 settled windows, 135 with an oracle opinion.

@@ -27,11 +27,46 @@ Read-only. Reports every paper-* and preopen-* ledger it finds.
 """
 import glob
 import os
+import shutil
 import sqlite3
+import subprocess
 import time
 
 # window seconds by family, for turning dark time into windows lost
 FAMILY_SECS = {"5m": 300, "15m": 900, "1h": 3600}
+
+
+def unit_state(name):
+    """"active" | "stopped" | "unknown" for the bot behind a ledger directory.
+
+    THE FIRST VERSION OF THIS TOOL HAD NO SUCH CHECK and ran every unlifted
+    halt to the present instant. Retired units — snipe-*, stopped in early
+    August — therefore reported 601, 225 and 106 hours "dark" apiece and a
+    fleet total of 12,270 lost windows, when the real figure across the two
+    bots that still exist was 141. A halt with no lift means the bot never
+    recorded coming back; it does NOT mean the bot is sitting there halted.
+    Distinguishing those is the difference between a number and a scare.
+
+    A halted bot writes nothing, so file mtime cannot separate the two — only
+    the service manager knows. No systemctl (or an unrecognised name) yields
+    "unknown", which is reported as a bounded range rather than a guess.
+    """
+    if not shutil.which("systemctl"):
+        return "unknown"
+    for unit in (f"polybot-{name}",
+                 f"polybot-{name}".replace("15", "-15m"),
+                 f"polybot-{name}-15m"):
+        try:
+            r = subprocess.run(["systemctl", "is-active", unit],
+                               capture_output=True, text=True, timeout=5)
+        except (OSError, subprocess.SubprocessError):
+            return "unknown"
+        out = r.stdout.strip()
+        if out == "active":
+            return "active"
+        if out in ("inactive", "failed"):
+            return "stopped"
+    return "unknown"
 
 
 def family_of(path):
@@ -72,53 +107,88 @@ def main():
     if not paths:
         raise SystemExit("no ledgers under bot/data/*/paper.db")
     now = time.time()
-    print(f"{'ledger':<22} {'dark':>9} {'of life':>8} {'windows':>8}  periods")
+    print(f"{'ledger':<22} {'unit':>8} {'dark':>9} {'windows':>8}  periods")
     print("-" * 78)
-    grand_dark = grand_win = 0
+    live_dark = live_win = 0
+    retired, unsure = [], []
     for p in paths:
         name = os.path.basename(os.path.dirname(p))
         try:
             db = sqlite3.connect(f"file:{p}?mode=ro", uri=True)
             per, shadows = spans(db)
-            first = db.execute("SELECT MIN(ts) FROM events").fetchone()[0]
+            last = db.execute("SELECT MAX(ts) FROM events").fetchone()[0]
         except sqlite3.Error as e:
             print(f"{name:<22} unreadable ({str(e)[:40]})")
             continue
-        if first is None:
+        if last is None:
             continue
-        life = max(now - first, 1.0)
+        state = unit_state(name) if (per or shadows) else "-"
         T = FAMILY_SECS[family_of(name)]
-        dark = sum((e or now) - s for s, e, _ in per)
+        # AN OPEN HALT ENDS WHERE THE EVIDENCE ENDS. For a running bot that
+        # is now; for a retired one it is its last ledger write, because
+        # everything after that is time the bot did not exist for.
+        def close(e):
+            if e is not None:
+                return e
+            return now if state == "active" else last
+        dark = sum(close(e) - s for s, e, _ in per)
         lost = int(dark // T)
-        grand_dark += dark
-        grand_win += lost
-        mark = "" if not any(e is None for _, e, _ in per) else "  <- STILL DARK"
+        if state == "active":
+            live_dark += dark
+            live_win += lost
+        elif per and state == "stopped":
+            retired.append(name)
+        elif per:
+            # UNKNOWN IS NOT RETIRED. Without a service manager to ask, an
+            # open halt could be a live bot sitting dark or a unit deleted
+            # last week, and those differ by orders of magnitude. Report the
+            # bounds instead of picking one and calling it a measurement.
+            hi = sum((e if e is not None else now) - s for s, e, _ in per)
+            unsure.append((name, dark, hi, int(hi // T)))
         if per or shadows:
-            print(f"{name:<22} {dark/3600:>8.2f}h {100*dark/life:>7.1f}% "
-                  f"{lost:>8}  {len(per)} halt(s), "
-                  f"{len(shadows)} shadow{mark}")
+            print(f"{name:<22} {state:>8} {dark/3600:>8.2f}h {lost:>8}  "
+                  f"{len(per)} halt(s), {len(shadows)} shadow")
             for s, e, why in per:
-                span = (e or now) - s
-                print(f"  {'':<20} {time.strftime('%m-%d %H:%M', time.gmtime(s))}"
-                      f" -> {time.strftime('%m-%d %H:%M', time.gmtime(e)) if e else 'now':<11}"
-                      f" {span/3600:>5.2f}h  {why[:44]}")
+                end = close(e)
+                tag = ("lifted" if e is not None else
+                       "STILL DARK" if state == "active" else
+                       "unit gone" if state == "stopped" else "unknown")
+                print(f"  {'':<20} "
+                      f"{time.strftime('%m-%d %H:%M', time.gmtime(s))} -> "
+                      f"{time.strftime('%m-%d %H:%M', time.gmtime(end))} "
+                      f"{(close(e)-s)/3600:>6.2f}h {tag:<10} {why[:38]}")
             for s, why in shadows:
-                print(f"  {'':<20} {time.strftime('%m-%d %H:%M', time.gmtime(s))}"
-                      f"    SHADOW (kept trading) {why[:36]}")
+                print(f"  {'':<20} "
+                      f"{time.strftime('%m-%d %H:%M', time.gmtime(s))} "
+                      f"   SHADOW — kept trading, day fully recorded")
         else:
-            print(f"{name:<22} {'-':>9} {'-':>8} {'-':>8}  clean")
+            print(f"{name:<22} {state:>8} {'-':>9} {'-':>8}  clean")
     print("-" * 78)
-    print(f"{'TOTAL':<22} {grand_dark/3600:>8.2f}h {'':>8} {grand_win:>8} "
-          f"windows never evaluated\n")
-    if grand_win:
-        print("THESE WINDOWS ARE NOT RECOVERABLE FROM THE LEDGER — the bot never")
-        print("traded them. They ARE priceable from the tape archive, and they")
-        print("are exactly the intervals where doing so matters, because a halt")
-        print("only ever fires on a bad day. Until that is done, treat every")
-        print("live win rate above as an UPPER bound and every drawdown as a")
-        print("LOWER bound.")
+    print(f"{'LIVE UNITS':<22} {'':>8} {live_dark/3600:>8.2f}h {live_win:>8} "
+          f"windows never evaluated")
+    if retired:
+        print(f"\n{len(retired)} retired ledger(s) excluded from the total "
+              f"({', '.join(retired)}).")
+        print("Their halts are real history but the units no longer run, so")
+        print("their dark time is bounded at their last write, not at now.")
+    if unsure:
+        print(f"\n{len(unsure)} ledger(s) whose unit could not be identified — "
+              f"reported as a range,")
+        print("low = dark to the last ledger write (certain), "
+              "high = dark to now (only if still running):")
+        for nm, lo, hi, hw in unsure:
+            print(f"  {nm:<20} {lo/3600:>7.2f}h .. {hi/3600:>8.2f}h "
+                  f"(up to {hw} windows)")
+    print()
+    if live_win:
+        print("THE LIVE FIGURE IS NOT RECOVERABLE FROM THE LEDGER — the bot")
+        print("never traded those windows. It IS priceable from the tape")
+        print("archive, and those are exactly the intervals where doing so")
+        print("matters, because a halt only ever fires on a bad day. Until")
+        print("then, treat live win rates as UPPER bounds and drawdowns as")
+        print("LOWER bounds.")
     else:
-        print("No halts recorded: the ledgers above are uncensored.")
+        print("No halt is currently censoring a running bot.")
 
 
 if __name__ == "__main__":
