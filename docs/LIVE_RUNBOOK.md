@@ -2581,3 +2581,63 @@ them in that order.
   which is indistinguishable from one that exists and is stopped, so the
   first candidate name settled it. It now reads LoadState first and skips
   not-found names.
+
+- 2026-08-11 THE ESTIMATOR HYPOTHESIS IS DEAD, AND THE REAL SIGNAL IS SIGNED.
+  bot/mismatch_audit.py on 411 btc and 398 eth settled windows:
+
+      estimator    agrees  WRONG  no call  accuracy
+      btc rescaled    256      4      151    98.5%
+      btc carried     260      5      146    98.1%
+      eth rescaled    266      4      128    98.5%
+      eth carried     273      6      119    97.8%
+
+  The two estimators differ by a median 0.007bp (btc) / 0.014bp (eth) and
+  NEVER by more than 0.247bp — under the 0.3bp tie band on every one of 530
+  windows. So the choice of estimator cannot flag a single mismatch, and
+  carry is if anything marginally worse. DO NOT change the settlement path
+  to twap_carry; that idea is closed.
+
+  WHAT IS LEFT IS A ONE-SIDED ERROR. All three flagged windows say the same
+  thing — we called DOWN by a hair, the exchange called UP:
+      btc w1786475400  -0.310bp      eth w1786459500  -0.303bp
+      eth w1786475400  -0.421bp
+  Two sit essentially ON the 0.3bp threshold, and w1786475400 (19:10 UTC)
+  mismatched on BTC AND ETH AT THE SAME INSTANT, which no per-coin price
+  error can produce. The rule is "TWAP close >= TWAP open", so TIES BREAK UP:
+  a small systematic NEGATIVE bias in our close-open pushes near-ties to
+  "down" for us and "up" for them, which is exactly this signature.
+  Reconstruction noise is symmetric. This is not.
+
+  TWO NUMBERS THAT NEED ANSWERING, both visible above and neither previously
+  noticed:
+    98.5% IS BELOW THIS PROJECT'S OWN GATE. twap_verify says "do NOT migrate
+    the oracle on a rule that scores below ~99%". The 100%-on-76-windows
+    result that authorised the migration was a small sample; at 260 called
+    windows it is 98.5%. At that rate the mismatch tripwire fires about every
+    65 decided windows, which is not a viable configuration — it will keep
+    halting the fleet no matter what else is fixed.
+    37% OF WINDOWS GET NO CALL (151 of 411 btc). Unexplained. It is either
+    coverage or the two boundary conventions disagreeing, and which one it is
+    changes what to do about it.
+
+  bot/twap_align.py tests the bias hypothesis properly: it scans boundary
+  offsets (-4..+4s) and window lengths (N-2..N+2) against official outcomes,
+  picks on the first half and reports on the second, and — the part that
+  gives it any power — runs on the NEAR-TIE windows only. A window decided by
+  5bp is called correctly by every alignment in the scan; shifting a boundary
+  by a second moves the mean by hundredths of a bp and can only flip windows
+  already inside that margin, which is precisely where the mismatches live.
+  Scanning everything dilutes the comparison to a dead heat.
+
+  scripts/test_twap_align.py holds it to both answers: it recovers a planted
+  +2s misalignment (100% out of sample vs an 86.9% baseline) AND reports
+  "current alignment stands" on a clean fixture with the same 260 near-tie
+  windows and 45 cells to fish in. A scanner that only ever says yes is worse
+  than no scanner, because its answer arrives attached to a settlement-path
+  change.
+
+  IF THE SCAN FINDS NOTHING, the residual is genuine sub-basis-point
+  reconstruction noise against a feed we sample rather than receive, and the
+  answer is a tie band matched to the MEASURED error rather than a guessed
+  0.3 — but that is a decision to take on evidence, after the scan, not a
+  way to make the alarm stop.
