@@ -208,6 +208,18 @@ class Config:
 
     # --- risk / kill-switches ---
     max_daily_loss: float = _env("MAX_DAILY_LOSS", 250.0, float)  # $ paper, halt for the day
+    # IN PAPER THE DAILY STOP IS RECORDED, NOT ENFORCED. A paper bot is a
+    # measurement instrument with no capital to preserve, and halting it on
+    # bad days censors the sample in exactly one direction — losing runs cut
+    # off at the breaker, winning runs recorded in full — which biases every
+    # win rate and every drawdown optimistically. Found 2026-08-11: btc 5m
+    # was dark 5h and eth 5m 6h47m, and nothing in the ledgers said so.
+    # An uncensored record can always be censored in analysis; a censored one
+    # can never be repaired, so the default records. Set 0 to enforce.
+    # IGNORED WHEN mode=live, where the stop is sticky and absolute.
+    paper_shadow_daily_stop: bool = _env(
+        "PAPER_SHADOW_DAILY_STOP", "1",
+        str).strip().lower() not in ("0", "false", "no", "off", "")
     snipe_trailing_n: int = 30             # settled fills in the trailing window
     # Fast bleed tripwire, sized to the day's budget so it scales with bankroll
     # (paper $250 -> -$200; live 20%-of-bankroll -> -16%). A FIXED $ threshold

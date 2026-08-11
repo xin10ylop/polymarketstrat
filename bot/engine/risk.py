@@ -16,6 +16,7 @@ class RiskManager:
         self.cfg, self.ledger, self.oracle, self.spot = cfg, ledger, oracle, spot
         self._halts = {}
         self._started = time.time()
+        self._shadow_day = None      # UTC day whose shadow stop is recorded
 
     def halt(self, scope, reason, until=None):
         """until=None -> sticky (human restart required); otherwise the halt
@@ -64,8 +65,33 @@ class RiskManager:
             # paper: a DAILY stop lifts with the new day. live: STICKY — real
             # money resumes only when a human restarts (audit 2026-07-30 #7).
             next_utc_day = (int(time.time() // 86400) + 1) * 86400
-            self.halt("all", f"daily loss {pnl:.2f} < -{self.cfg.max_daily_loss}",
-                      until=None if self.cfg.mode == "live" else next_utc_day)
+            if self.cfg.mode != "live" and self.cfg.paper_shadow_daily_stop:
+                # A CAPITAL RULE ON A MEASUREMENT INSTRUMENT DESTROYS THE
+                # MEASUREMENT. In paper there is no capital to preserve, and
+                # stopping on bad days censors the sample in one direction:
+                # losing runs are truncated at the breaker while winning runs
+                # record in full, biasing every win rate and every drawdown
+                # optimistically. Found 2026-08-11 — btc 5m dark 5h, eth 5m
+                # dark 6h47m, and the ledgers gave no hint either had stopped.
+                # Recorded instead of enforced, because an UNCENSORED record
+                # can always be censored in analysis while a censored one can
+                # never be repaired. Every fill after this event is what the
+                # breaker would have vetoed, so live-equivalent P&L stays
+                # exactly reconstructible.
+                day = int(time.time() // 86400)
+                if self._shadow_day != day:
+                    self._shadow_day = day
+                    self.ledger.event(
+                        "SHADOW_HALT",
+                        f"all: daily loss {pnl:.2f} < -{self.cfg.max_daily_loss}")
+                    log.warning(
+                        "SHADOW daily stop: loss %.2f < -%.2f — live would have "
+                        "halted here; paper keeps trading so the day is fully "
+                        "recorded (PAPER_SHADOW_DAILY_STOP=0 to enforce)",
+                        pnl, self.cfg.max_daily_loss)
+            else:
+                self.halt("all", f"daily loss {pnl:.2f} < -{self.cfg.max_daily_loss}",
+                          until=None if self.cfg.mode == "live" else next_utc_day)
         if self.cfg.mode == "live":
             # cumulative drawdown: a dead edge losing one daily-stop at a time
             # never trips the daily/trailing breakers individually; this does.

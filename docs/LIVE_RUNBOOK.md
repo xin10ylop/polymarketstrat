@@ -2264,12 +2264,16 @@ them in that order.
   (>100% is the restart re-evaluating the window in flight, not double
   trading — `done` still gates entry.)
 
-  CAUSE. The run loop fired only inside a 0.6-second slot:
-  `if not (0.0 <= (nxt - lead) - now <= 0.6): sleep(0.05); continue`. The loop
-  polls at 20Hz, so missing that slot takes twelve consecutive iterations of
-  event-loop stall. The 5m units run their reconcile cycle three times as
-  often as the 15m units, which is exactly the split above. I did NOT isolate
-  the stalling call, and the fix does not depend on knowing it.
+  CAUSE — THIS ATTRIBUTION IS WRONG, SEE THE 08-11 HALT ENTRY BELOW. What I
+  wrote at the time: "The run loop fired only inside a 0.6-second slot; the
+  loop polls at 20Hz, so missing that slot takes twelve consecutive
+  iterations of event-loop stall, and the 5m units reconcile three times as
+  often as the 15m units, which is exactly the split." It is not. The real
+  split was HALTED vs NEVER-HALTED, and the two units that scored 101%/104%
+  are the two that never tripped the daily-loss breaker. There was no stall.
+  The band was genuinely narrow and the silence was genuinely real, so the
+  widening stands on its own — but it did not cause these numbers, and
+  nothing downstream should cite them as evidence of event-loop pressure.
 
   THE WORST PART WAS NOT THE LOSS, IT WAS THE SILENCE. A dropped window
   incremented nothing — not `evals`, not `skips`, not `why`. Every diagnostic
@@ -2346,3 +2350,56 @@ them in that order.
   measurement instrument destroys the measurement. Confirm from the HALT
   events before trusting any live pre-open number, and decide separately
   whether a PAPER research bot should carry a daily breaker at all.
+
+- 2026-08-11 THE HALT IS CONFIRMED, AND IT CENSORED THE SAMPLE. The ledgers:
+
+      btc 5m   HALT 08-11 07:15:09  daily loss -308.68 < -250.0  (still dark)
+      eth 5m   HALT 08-10 17:12:30  daily loss -367.07 < -250.0
+               lifted 08-11 00:00:00                    -> 6h47m dark
+      btc 15m  none  (pnl_today -142.02)
+      eth 15m  none  (pnl_today 0.00)
+
+  THIS RETRACTS THIS MORNING'S MISSED-WINDOW DIAGNOSIS. I attributed the 22%
+  btc / 35% eth shortfall to an event-loop stall stepping over a 0.6s firing
+  band, and cited the 5m units' reconcile cadence as the mechanism. Wrong.
+  eth 5m was dark 6h47m; over a 19h measurement that is 36% against the 35%
+  measured. btc 5m halted at 07:15 against a window ending near midday, about
+  25% against the 22% measured. The split was HALTED vs NEVER-HALTED, and the
+  two units at 101%/104% are the two that never tripped. There was no stall.
+  The band was genuinely narrow and the widening is still right on its own
+  merits, but nothing downstream may cite those percentages as evidence of
+  event-loop pressure.
+
+  WHAT THE HALT DID TO THE NUMBERS, and this is the part that matters. The
+  breaker fires exactly when a day is going badly, so every halt TRUNCATES A
+  LOSING RUN while every winning run records in full. That biases the ledgers
+  in one direction:
+    - win rates are UPPER bounds (the losses after the breaker are absent
+      from numerator and denominator both)
+    - drawdowns are LOWER bounds. btc 5m's "-$580 from peak" means it stopped
+      losing because it stopped trading, not because the strategy turned. The
+      real path is unobserved.
+  So the +$163/56% figure for btc 5m, and everything else quoted from these
+  four ledgers, is a censored statistic. The 08-10 tape backtests are NOT
+  affected — they read the archive, not the ledger — which is why the tape
+  numbers are the ones to trust.
+
+  THE FIX: IN PAPER THE DAILY STOP IS NOW RECORDED, NOT ENFORCED.
+  `PAPER_SHADOW_DAILY_STOP=1` (default). A trip writes one SHADOW_HALT event
+  per UTC day and logs it; trading continues. An uncensored record can always
+  be censored in analysis — partition on the SHADOW_HALT timestamp and the
+  live-equivalent P&L is exactly reconstructible — while a censored record can
+  never be repaired. A capital-preservation rule on a measurement instrument
+  destroys the measurement, and in paper there is no capital to preserve.
+
+  DELIBERATELY UNCHANGED, and tested (scripts/test_risk_shadow_stop.py, 21
+  assertions):
+    - mode=live still halts on the daily loss, still STICKY, and the paper
+      flag cannot reach it
+    - the MISMATCH halt still bites in paper. That one means our oracle
+      disagrees with the exchange about who won: a correctness signal, not a
+      P&L signal, and it must stop everything in every mode
+    - PAPER_SHADOW_DAILY_STOP=0 restores the old enforcing behaviour exactly
+
+  bot/halt_audit.py reports dark time and windows lost per ledger, so the
+  censored intervals can be re-priced from the tape rather than guessed at.
