@@ -2766,3 +2766,33 @@ them in that order.
   btc / 10.1% eth blackout" figure recorded earlier. Either the blackout rate
   is worse than measured, or coverage is thin for a different reason. Do not
   raise or lower ORACLE_TWAP_MIN_COVERAGE before knowing which.
+
+- 2026-08-11 THE TWO P&L NUMBERS IN THE STATUS LINE ARE NOT THE SAME NUMBER,
+  and reading one as the other is easy:
+
+      pnl_today=       ledger.realized_pnl_today(), ts >= UTC midnight.
+                       RESETS AT 00:00 UTC. This is what the breaker reads.
+      fills={'pnl':}   ledger.summary(), SUM(pnl) over the fills table with
+                       NO time filter. LIFETIME since the ledger began.
+
+  Also: preopen[evals= in= skip= why=] are IN-MEMORY counters that reset to
+  zero on every restart, while fills={} comes from the database and persists.
+  `evals=1` beside `fills=130` right after a restart is not a contradiction.
+
+  And P&L only lands when a window SETTLES, roughly ten minutes after close,
+  so it moves in lumps rather than continuously — a bot that has entered
+  nothing for an hour shows a frozen total and is working correctly.
+
+  bot/pnl_daily.py gives the PATH: per UTC day, fills, win rate, day P&L,
+  running cumulative, RUNNING peak and drawdown from it, with halted days
+  marked as censored. It exists because on 08-10 I quoted +$260, +$311 and
+  +$163 at three check-ins and called btc 5m flat, when the path had peaked
+  at +$743.34 and given back $580.18 — 78% of peak. No cumulative number
+  quoted at intervals can show that, and the drawdown column is the one that
+  decides whether a strategy can be sized.
+
+  Smoke-tested against exactly that shape; it reports peak +743.34, worst
+  drawdown -580.18, 78% of peak, and marks the losing day HALTED. The first
+  version printed the FINAL peak on every row, so an early row claimed a peak
+  it had not reached yet and its drawdown column was unreadable — the running
+  peak is the only one that means anything per row.
