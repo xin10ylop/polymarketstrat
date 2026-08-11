@@ -2999,3 +2999,59 @@ them in that order.
   skipped by a `continue`. Same silent-failure shape as the dropped windows
   and the bare halt `continue`. It splits by RANK now, and says so when a
   split is impossible rather than vanishing.
+
+- 2026-08-11 THE LEAN INVERSION FAILS THE COIN TEST. Refreshed the tape (214
+  windows each; the cache was stale, which was costing HALF the sample) and
+  ran lean_test on the book archive:
+
+      btc 5m, 115 gated windows   57.4% settle, edge +3.55c, 95% lo -5.58
+        first half   cheap 46.4% -5.25c   dear 62.1% +7.87c   DEAR ahead
+        SECOND half  cheap 55.2% +3.77c   dear 65.5% +7.52c   DEAR ahead
+
+      eth 5m,  93 gated windows   57.0% settle, edge +3.12c, 95% lo -7.02
+        first half   cheap 60.9% +10.16c  dear 47.8% -8.65c   cheap ahead
+        SECOND half  cheap 69.6% +18.21c  dear 50.0% -6.77c   cheap ahead
+
+  EACH COIN IS STABLE ACROSS TIME AND THE TWO COINS POINT OPPOSITE WAYS. The
+  pre-registered gate was "both halves AND both coins"; it fails, so the
+  ceiling rule is NOT inverted. Note also that not one bucket in either table
+  has a positive 95% lower bound, and two coins each agreeing with themselves
+  across a split is a 25% coincidence, not evidence. Closed unless a much
+  larger sample revives it.
+
+  THE FUNNEL EARNED ITS KEEP: the drop was 432 -> 218 at "settled outcome",
+  i.e. the TAPE CACHE WAS STALE, not thin coverage as I predicted. One
+  tape_backfill run took btc from 61 gated windows to 115 and eth from below
+  the floor to 93. Re-run it before any archive analysis; it only fetches
+  what it lacks. Coverage prices 90-95% here, so the 35% tripwire refusal
+  rate is a different question after all.
+
+- 2026-08-11 THE SAME RUN FOUND SOMETHING BIGGER: WE ARE NOT PAYING THE QUOTE.
+
+      quoted at T-3 (archive)   paid (live fills)    gap
+      btc      0.5210                0.5244        -0.34c
+      eth      0.5212                0.5338        -1.26c
+
+  The archive says eth's gated windows are available at 0.5212 and worth
+  about +3.12c; the live eth bot paid 0.5338 and lost $542. On a 3c edge,
+  1.26c is nearly half of it — and it is not a signal problem at all, since
+  the tilt picked the same windows either way.
+
+  SUSPECTED MECHANISM: executor.take() sends a marketable limit at
+  PREOPEN_MAX_PX for PREOPEN_CLIP=250 shares. A limit priced at the CEILING
+  walks the book as far as the ceiling to fill the clip, so whenever the
+  touch holds fewer than 250 shares the remainder fills higher. That is a
+  size problem with a size fix, and a smaller clip costs NO signal — the same
+  windows are entered, just smaller.
+
+  bot/slippage.py tests it by joining each preopen_entry to the book
+  recorder's T-3 snapshot for the same window and side. The discriminator is
+  DEPTH: sweeping makes the gap grow as the touch thins below the clip; a
+  merely stale quote does not care about depth. Smoke-tested against a
+  planted effect (thin touch 2c, deep touch 0c): reports +2.00c thin,
+  +0.00c deep, verdict "the clip is sweeping", as constructed.
+
+  IF IT CONFIRMS, this is the largest lever found today and it is a one-line
+  change. If slippage does not track depth, the clip is innocent and the
+  cause is timing between the snapshot and the fire — a different fix, and
+  worth knowing before touching anything.
