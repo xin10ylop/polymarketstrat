@@ -2211,3 +2211,44 @@ them in that order.
   so every LIMIT row is the optimistic bound while HOLD carries no such
   assumption — the comparison is tilted in the limit's favour and it still did
   not win. The live bid tracker is the pessimistic bound on the same question.
+
+- 2026-08-11 VOL-SCALED GATE, RETRACTED A SECOND TIME — now on the real grid.
+  Ranking windows by |tilt|/vol instead of |tilt|, priced at the actual
+  pre-open entry from the tape (bot/vol_gate.py, matched trade counts so
+  neither ranking gets to pick its own threshold).
+
+  btc, top 20 of 138: scaled settles 85.0% for +28.68c/share against fixed's
+  70.0% for +16.16c, and its 95% floor is +11.41c where fixed is -4.21c. On
+  the point estimate it is not close. OUT OF SAMPLE IT DIES: first half
+  +31.05c, second half +0.63c, losing to fixed in both splits tried. That is
+  the signature of a fitted ranking, not an edge.
+
+  THE MECHANISM DOES NOT REPRODUCE AT OUR ENTRY PRICE. vol_tilt reports a
+  clean calm 66.3% > middle 60.5% > wild 56.0% ordering, but it prices at the
+  FIRST QUOTE AFTER THE OPEN (avg px 0.61-0.68, break-even 66%). At the
+  pre-open entry the same split is btc 69.6% / 45.7% / 63.0% and eth
+  54.5% / 57.6% / 50.0% — non-monotonic on both coins, with the MIDDLE
+  bucket worst. A regime effect cannot have that shape.
+
+  AND THE COINS DISAGREE BACKWARDS. eth is the one that holds out of sample
+  (+4.56c, +5.33c) — and eth is where the mechanism is absent by vol_tilt's
+  own numbers: true slope +0.0303 in both regimes, book paying 139% in calm.
+  btc, where the mechanism looked strongest, is where the ranking fails. A
+  result that appears only where its explanation does not apply is noise.
+  Every eth lower bound is negative regardless; best is -0.33c.
+
+  This is the SECOND retraction of this idea. The first (08-09) won 8 of 8
+  slices on Binance and 3 of 8 on the real feed, because both terms of the
+  ratio came from the same noisy proxy. That defect is gone — both terms now
+  come from the Chainlink grid the market settles on — and the idea still
+  fails. Do not try a third time without a materially larger sample AND a
+  monotonic regime split to justify it.
+
+  WHAT THE SAME RUN CONFIRMED, and this is the part worth keeping: the FIXED
+  gate priced at the real pre-open entry clears its floor in three cells —
+  n=34 +16.03c [floor +0.29c], n=55 +16.00c [+3.81c], n=82 +12.46c [+2.08c] —
+  and stays positive in BOTH out-of-sample halves (+6.46c, +7.45c). The
+  configuration already running is the one supported.
+
+  btc 15m could not be scored: only 19 windows clear a 0.6bp pool gate in the
+  grid so far. Revisit when the archive is roughly three times longer.
