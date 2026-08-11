@@ -3055,3 +3055,44 @@ them in that order.
   change. If slippage does not track depth, the clip is innocent and the
   cause is timing between the snapshot and the fire — a different fix, and
   worth knowing before touching anything.
+
+- 2026-08-11 SLIPPAGE CONFIRMED, AND IT IS THE LARGEST DRAG FOUND SO FAR.
+
+      btc  quoted 0.5106  paid 0.5253  +1.47c/share, above quote on 93% (65/70)
+      eth  quoted 0.5153  paid 0.5388  +2.35c/share, above quote on 95% (18/19)
+
+  Against edges of +3.55c (btc) and +3.12c (eth) measured on the archive,
+  that is 42% and 75% of the edge lost between the quote and the fill. It is
+  NOT a signal problem — the tilt selected the same windows either way.
+
+  THE DEPTH RELATIONSHIP IS MONOTONIC, which a stale quote cannot produce:
+
+      touch under 125   n=28   +1.93c
+      touch 125-250     n=15   +1.75c
+      touch 250-500     n=22   +0.92c
+      touch over 500    n=5    +0.49c
+      thinner than the clip +1.86c   deeper than the clip +0.84c
+
+  So the clip IS walking the book. All 19 eth entries had a touch under 125
+  shares against a 250 clip — eth's book is simply thinner, which is a
+  sufficient explanation for why eth is the losing bot without any appeal to
+  its signal being worse.
+
+  THE +0.49c FLOOR ON DEEP BOOKS IS NOT SWEEPING. That is drift between the
+  T-3 snapshot and the fire, and no clip change touches it. Only the excess
+  above it is a size problem.
+
+  DO NOT REFLEXIVELY CUT THE CLIP. Total EV is clip x (edge - slippage), so a
+  smaller clip buys a better price on fewer shares and can earn LESS. The
+  tool now prices $/trade across clip sizes from the per-window swept price,
+  backed out of what we actually paid (cost = touch x eff_ask + rest x swept,
+  one unknown) rather than from a fill model.
+
+  A DEFECT IN THAT SECTION, CAUGHT BY ITS OWN SMOKE TEST: the first version
+  showed clips of 350 and 500 earning more. Every observation comes from a
+  250 clip, so the ladder above 250 is unobserved, and modelling it pinned
+  the marginal share at the AVERAGE swept price instead of letting it rise —
+  "bigger is always better" was a property of the arithmetic, not the book.
+  It now refuses to show any clip above the largest observed fill. Fourth
+  instance today of a tool being confidently wrong in the flattering
+  direction; the smoke test with a known answer is what caught every one.

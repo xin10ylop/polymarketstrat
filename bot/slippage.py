@@ -41,6 +41,7 @@ import sqlite3
 import statistics as st
 
 from bot.config import CFG
+from bot.pnl_daily import breakeven as breakeven_px
 from bot.twap_verify import COIN, FAMILY, WINDOW
 
 DATA = os.environ.get("DATA", "bot/data/preopen-btc")
@@ -139,6 +140,82 @@ def main():
     else:
         print("Not enough windows on both sides of the clip to separate")
         print("sweeping from a stale quote yet.")
+        return
+
+    # ---- WHAT CLIP MAXIMISES DOLLARS, NOT PRICE? -----------------------
+    # THE TRAP THIS SECTION EXISTS TO AVOID. "Slippage is 1.47c, cut the
+    # clip" is wrong reasoning: total EV is clip x (edge - slippage), so a
+    # smaller clip buys a better price on fewer shares and can earn LESS.
+    # What matters is where the MARGINAL share stops paying.
+    #
+    # Two components, separated because only one is fixable by size:
+    #   DRIFT    the gap that remains when the touch is deeper than the clip
+    #            (+0.49c on btc's deepest band). The book moving between the
+    #            T-3 snapshot and the fire. No clip change touches it.
+    #   SWEEP    everything above that, which is the clip walking the ladder.
+    #
+    # The swept price is backed out per window from what we actually paid:
+    # cost = touch x eff_ask + (filled - touch) x swept, so swept is the only
+    # unknown. That is measurement, not a fill model.
+    deep = [r for r in rows if r[4] >= CLIP]
+    drift = st.mean(r[3] for r in deep) / 100.0 if len(deep) >= 5 else 0.0
+    wins = None
+    ldb = sqlite3.connect(f"file:{lp}?mode=ro", uri=True)
+    try:
+        wr_row = ldb.execute(
+            "SELECT COUNT(*), SUM(CASE WHEN pnl>0 THEN 1 ELSE 0 END) "
+            "FROM fills WHERE pnl IS NOT NULL").fetchone()
+        if wr_row and wr_row[0]:
+            wins = wr_row[1] / wr_row[0]
+    except sqlite3.Error:
+        pass
+    if wins is None:
+        print("\n(no settled fills yet, so the clip sweep cannot be priced)")
+        return
+
+    ladder = []
+    for _w, ask, paid, _g, touch, _cum, filled in rows:
+        if filled <= 0:
+            continue
+        eff = ask + drift
+        if touch >= filled:
+            swept = eff
+        else:
+            swept = (filled * paid - touch * eff) / (filled - touch)
+            swept = max(swept, eff)
+        ladder.append((eff, touch, swept))
+
+    # NO EXTRAPOLATION ABOVE WHAT WE ACTUALLY FILLED. Every observation here
+    # comes from a clip of CLIP shares, so the ladder beyond that point is
+    # unobserved. Modelling a larger clip pins its marginal share at the
+    # AVERAGE swept price instead of letting it rise, which makes "bigger is
+    # always better" a property of the arithmetic rather than of the book.
+    # The first version printed 350 and 500 doing exactly that.
+    top = int(max(r[6] for r in rows))
+    print(f"\n=== WHAT CLIP EARNS MOST? (win rate {100*wins:.1f}%, "
+          f"drift {100*drift:+.2f}c is not fixable by size) ===")
+    print(f"Only clips up to {top} are shown: that is the largest fill in the")
+    print("data, and the book above it was never observed.")
+    print(f"{'clip':>6} {'avg price':>10} {'edge¢/sh':>9} {'$/trade':>9} "
+          f"{'vs now':>8}")
+    rowsN = []
+    for N in [x for x in (25, 50, 100, 150, 200, 250, 350, 500)
+              if x <= top]:
+        px = st.mean(
+            (eff if N <= touch else (touch * eff + (N - touch) * swept) / N)
+            for eff, touch, swept in ladder)
+        per_share = wins - breakeven_px(px)
+        per_trade = N * per_share
+        rowsN.append((N, px, per_share, per_trade))
+    base = next((t for n_, _, _, t in rowsN if n_ == int(CLIP)), None)
+    for N, px, per_share, per_trade in rowsN:
+        tag = "  <- current" if N == int(CLIP) else ""
+        delta = "" if base is None else f"{per_trade - base:+8.2f}"
+        print(f"{N:>6} {px:>10.4f} {100*per_share:>+8.2f}c "
+              f"{per_trade:>+9.2f} {delta:>8}{tag}")
+    print("\n$/trade is the number to maximise. A clip that improves the")
+    print("PRICE while shrinking the position can still earn less, which is")
+    print("why the price column alone must not decide this.")
 
 
 if __name__ == "__main__":
