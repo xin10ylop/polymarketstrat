@@ -16,7 +16,13 @@ Environment=FAMILY=15m
 # accuracy at >5bp holds far earlier than the original 120s ceiling
 # (btc 15m: 98.6% at 180s, 95.5% at 300s) and those prices have
 # never been observed. Cannot be back-filled, so record them now.
-Environment=PREOPEN=20,10,5,3
+# 2 and 1 added 08-11. The bot fires at T-3.6 and its spot print is
+# ALWAYS 3s stale (median 3, worst 3, across every entry on all three
+# bots) because the T-3 second has not finished elapsing when it asks.
+# Moving the lead to T-1 would buy a T-4 print instead of T-6 and two
+# more strike seconds — but only if the book is still flat that late,
+# which has never been sampled. Cannot be back-filled, so record now.
+Environment=PREOPEN=20,10,5,3,2,1
 Environment=LEADS=898,885,870,840,780,600,450,300,240,180,120,90,60,45,30,20,10,6,3
 Environment=BOOK_DIR=/opt/polymarketstrat/bot/data/bookcal
 ExecStart=/opt/polymarketstrat/venv/bin/python -m bot.book_record
