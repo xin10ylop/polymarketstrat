@@ -26,12 +26,33 @@ carrying a halt are marked. See LIVE_RUNBOOK 2026-08-11.
 Read-only.
 """
 import glob
+import math
 import os
 import sqlite3
 import time
 
 DAYS = int(os.environ.get("DAYS", "14"))
 DAY = 86400
+Z = 1.96
+
+
+def wilson(k, n):
+    """95% interval on a win rate. Wilson, not normal-approximation: at these
+    sample sizes the naive interval runs past 100% and understates width."""
+    if not n:
+        return 0.0, 0.0
+    p = k / n
+    d = 1 + Z * Z / n
+    c = (p + Z * Z / (2 * n)) / d
+    h = Z / d * math.sqrt(p * (1 - p) / n + Z * Z / (4 * n * n))
+    return max(0.0, c - h), min(1.0, c + h)
+
+
+def breakeven(px):
+    """Win rate needed to break even buying at px. Fee is 0.07*p*(1-p), so a
+    0.5187 entry needs 53.62% — the number every win rate here is measured
+    against, and it is NOT 50%."""
+    return px + 0.07 * px * (1 - px)
 
 
 def dark_days(db):
@@ -136,6 +157,44 @@ def main():
         else:
             print(f"INTRADAY: never above water "
                   f"(worst {min([0.0] + [w for w in [worst_f]]):+.2f})")
+        # ---- IS THIS DISTINGUISHABLE FROM ZERO? ---------------------------
+        # The only question a P&L total cannot answer. A +$471 result on 130
+        # fills sounds like an edge and is 0.5 standard deviations from
+        # nothing; the interval says so and the total never will.
+        wins = sum(1 for _, p in curve if p > 0)
+        n = len(curve)
+        row = db.execute(
+            "SELECT COALESCE(SUM(price*size),0), COALESCE(SUM(size),0) "
+            "FROM fills WHERE pnl IS NOT NULL").fetchone()
+        px = (row[0] / row[1]) if row[1] else 0.5
+        be = breakeven(px)
+        lo, hi = wilson(wins, n)
+        wr = wins / n if n else 0.0
+        print(f"EDGE: {wins}/{n} = {100*wr:.1f}%   95% CI "
+              f"[{100*lo:.1f}, {100*hi:.1f}]   entry {px:.4f} -> "
+              f"break-even {100*be:.2f}%")
+        if lo > be:
+            print("  clears break-even at 95%.")
+        elif hi < be:
+            print("  BELOW break-even at 95% — this is a losing configuration,")
+            print("  not an unlucky one.")
+        else:
+            edge = wr - be
+            if edge > 0:
+                # n for the interval to exclude break-even at the OBSERVED
+                # edge. If the edge is real, this is how long the wait is.
+                need = int(Z * Z * wr * (1 - wr) / (edge * edge)) + 1
+                print(f"  straddles break-even: cannot tell an edge from "
+                      f"nothing yet.")
+                print(f"  At this observed edge ({100*edge:+.2f}pp) it would "
+                      f"take about {need} fills")
+                print(f"  to separate them — {need - n} more, roughly "
+                      f"{(need - n) / max(1, n / max(1, len(hist))):.0f} "
+                      f"days at the current rate.")
+            else:
+                print("  straddles break-even, and the point estimate is on")
+                print("  the WRONG side of it. More data may rescue it; do not")
+                print("  assume it will.")
         print("* = today, still open\n")
 
     print("pnl_today= in the STATUS line is the '*' row only and resets at")

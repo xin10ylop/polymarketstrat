@@ -2836,3 +2836,33 @@ them in that order.
   that is both positive and plausible, and 130 fills cannot separate 56% from
   break-even. The tape backtest, not these ledgers, is still the instrument
   with any power.
+
+- 2026-08-11 THE INTRADAY DRAWDOWNS, once measured fill by fill, are LARGER
+  THAN THE PROFITS in every case:
+
+      bot        lifetime   peak      worst DD        trough
+      btc 5m     +471.38   +743.34   -898.53 (121%)   -155.19  went underwater
+      btc 15m    +574.99   +883.36   -653.88  (74%)   +229.48
+      eth 5m     -542.30   +122.09   -744.36 (610%)   -622.27
+      eth 15m     -46.29     never   -117.25
+
+  The day-end view showed btc 5m at -0.46. It actually round-tripped from
+  +743 to -155 and back to +471. Nothing can be sized against a P&L total
+  whose drawdown exceeds it, and two days cannot even establish the total.
+
+  pnl_daily now closes with the only question a total cannot answer — is
+  this distinguishable from zero — using a Wilson interval against the fee-
+  adjusted break-even (px + 0.07*px*(1-px); 0.5187 -> 53.62%, NOT 50%), plus
+  the fills needed to separate the observed edge from break-even.
+
+  btc 5m: 73/130 = 56.2%, 95% CI [47.6, 64.4] against break-even 53.62. It
+  STRADDLES. At the observed +2.54pp edge, separating them needs about 1,471
+  fills — roughly 21 more days at the current rate. That is the honest
+  answer to "is the edge there": the live ledger cannot say yet, and no
+  amount of staring at the running total will change that. The tape
+  backtest, with 7,493 backfilled windows, remains the instrument with
+  power; the ledger is confirmation, not discovery.
+
+  Hand-checked before use: Wilson(50,100) = [40.4, 59.6] against the
+  textbook value, break-even(0.5187) = 53.62% against the figure derived on
+  08-10, and n=0 returns (0,0) rather than dividing by zero.
