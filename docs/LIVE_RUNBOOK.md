@@ -2498,3 +2498,36 @@ them in that order.
   everything else. Its pairing rules are pinned by 15 assertions covering
   every case that has actually bitten. Do not change `alive` without adding
   one.
+
+- 2026-08-11 VERIFIED FINAL STATE. halt_audit and the journal now agree to the
+  minute: preopen-btc 5.03h dark, 08-11 07:15 -> 12:17 "restart", against
+  journal HALT 07:15:09 and SHADOW 12:17. 60 windows of 5m = 5.00h, so the
+  window count is consistent with the span rather than derived separately.
+
+      LIVE CENSORED TOTAL   11.82h   141 windows   (btc 60, eth 81)
+
+  THE ONE COMMAND FOR A ROUTINE CHECK, replacing the four-paste ritual:
+
+    cd /opt/polymarketstrat && echo "=== FLEET ===" && systemctl is-active \
+      polybot-preopen-btc polybot-preopen-btc-15m polybot-preopen-eth \
+      polybot-preopen-eth-15m | tr '\n' ' ' && echo && for u in btc btc-15m \
+      eth eth-15m; do printf "\n-- %s\n" $u; journalctl -u polybot-preopen-$u \
+      --since -3min --no-pager | grep STATUS | tail -1 | \
+      sed 's/.*preopen\[/preopen[/'; done && echo && \
+      venv/bin/python -m bot.halt_audit | head -8
+
+  WHAT TO READ IN IT, in order of what has actually gone wrong:
+    why={'halted': N}   the breaker is enforcing — should never appear now
+                        that paper shadows it, so it means live mode or the
+                        flag is off
+    why={'missed': N}   a window rolled past unaccounted for. Was invisible
+                        until today; if it appears, the loop is stalling
+    why={'too_late': N} woke inside the 0.5s floor. Harmless once or twice,
+                        a pattern means the box is loaded
+    lead worst=         the smallest achieved lead. Slides toward the floor
+                        before anything else breaks — the leading indicator
+    _mismatches         non-zero halts everything in every mode, correctly
+
+  NEXT, AND NOT A TONIGHT JOB: re-price the 141 censored windows from the
+  tape archive. Until then btc 5m's +$163 / 56% is an upper bound and its
+  -$580 drawdown is a lower bound.
