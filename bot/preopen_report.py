@@ -81,10 +81,13 @@ def main():
     if SINCE:
         wtss = [w for w in wtss if w >= SINCE]
     else:
-        # default to the windows where the DEEPEST pre-open lead exists, so
-        # every row is scored on the same population unless told otherwise
-        deep = max(PRE)
-        avail = {w for (w, L, _) in book if L == WINDOW + deep}
+        # Restrict to windows carrying the lead CLOSEST to the open — that is
+        # the scarcest one, because T-2 and T-1 only began recording on 08-11
+        # while T-20 goes back to 08-09. Using max(PRE) here selected the most
+        # abundant lead instead and changed nothing, which is how the first
+        # version of this fix silently did not apply.
+        scarce = min(PRE)
+        avail = {w for (w, L, _) in book if L == WINDOW + scarce}
         if avail and len(avail) < len(wtss):
             wtss = [w for w in wtss if w in avail]
     if not wtss:
