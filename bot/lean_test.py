@@ -148,11 +148,15 @@ def main():
           f"   ({len(both) and 100*n_priced/max(1, n_tape):.0f}% of the above)")
     print(f"  ... and it clears {GATE}bp        : {n_gated}\n")
     if len(rows) < 60:
-        raise SystemExit(
-            "too few to say anything. The pre-open book leads (WINDOW+n) were\n"
-            "only added to the recorders recently, so this needs more days\n"
-            "before it can answer the question — do not read the tables below\n"
-            "as evidence until this count is in the hundreds.")
+        # print, not SystemExit: stderr and stdout interleave unpredictably
+        # under a pipe, and this message appeared ABOVE the funnel that
+        # explains it — the reader saw the conclusion before the evidence.
+        print("TOO FEW TO SAY ANYTHING YET. Read the funnel above to see")
+        print("which stage is short. If 'settled outcome' is the drop, the")
+        print("tape cache is stale — re-run bot.tape_backfill, it is")
+        print("resumable and adds every window minted since it last ran.")
+        print("If the drop is at the gate, only time fixes it.")
+        return
 
     r3 = [(a, l, wn) for a, l, wn, _, _ in rows]
     s = stats(r3)
