@@ -49,6 +49,12 @@ POST = [int(x) for x in os.environ.get("POST", "2,15,30").split(",")]
 EXIT_C = float(os.environ.get("EXIT_C", "0.05"))
 TILT_MIN = float(os.environ.get("TILT_MIN", "0"))     # bp gate
 CLIP = float(os.environ.get("CLIP", "250"))
+# COMPARING LEADS ACROSS DIFFERENT WINDOWS IS NOT A COMPARISON. T-2 and T-1
+# only began recording on 08-11, so they cover ~10h against T-3's 40h — and a
+# lead that looks better on a different, shorter, more recent stretch of market
+# has been shown nothing. SINCE restricts EVERY lead to the same window set so
+# the columns are answering one question.
+SINCE = int(os.environ.get("SINCE", "0"))
 
 
 def fee(p):
@@ -72,6 +78,15 @@ def main():
     # pre-open rows are stored under the window they OPEN, at lead WINDOW+n
     wtss = sorted({w for (w, L, _) in book if L > WINDOW})
     wtss = [w for w in wtss if w - NSEC >= lo and w + WINDOW <= hi]
+    if SINCE:
+        wtss = [w for w in wtss if w >= SINCE]
+    else:
+        # default to the windows where the DEEPEST pre-open lead exists, so
+        # every row is scored on the same population unless told otherwise
+        deep = max(PRE)
+        avail = {w for (w, L, _) in book if L == WINDOW + deep}
+        if avail and len(avail) < len(wtss):
+            wtss = [w for w in wtss if w in avail]
     if not wtss:
         raise SystemExit("no pre-open rows yet — set PREOPEN= on the recorders")
     with ThreadPoolExecutor(16) as ex:
