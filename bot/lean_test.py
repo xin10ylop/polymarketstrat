@@ -57,7 +57,12 @@ from bot.twap_verify import COIN, DB_DIR, FAMILY, NSEC, WINDOW
 
 BOOK_DIR = os.environ.get("BOOK_DIR", "bot/data/bookcal")
 LEAD = int(os.environ.get("LEAD", "3"))
-GATE = float(os.environ.get("GATE", "1.0"))
+# THE GATE MUST MATCH THE UNIT OR THE POPULATIONS DIFFER. btc 5m runs 0.5bp,
+# not the 1.0 default -- reading this tool at the wrong gate halves the
+# sample and answers a question no bot is asking.
+_GATES = {("btc", "5m"): 0.5, ("btc", "15m"): 1.0,
+          ("eth", "5m"): 1.0, ("eth", "15m"): 1.7}
+GATE = float(os.environ.get("GATE", _GATES.get((COIN, FAMILY), 1.0)))
 ASK_EDGES = (0.0, 0.48, 0.50, 0.51, 0.52, 0.53, 0.54, 0.56, 1.01)
 LEAN_EDGES = (-1.0, -0.04, -0.02, -0.005, 0.005, 0.02, 0.04, 1.0)
 
@@ -114,21 +119,34 @@ def main():
     print(f"{COIN} {FAMILY}: grid {len(grid)}s, "
           f"book at T-{LEAD} {len(book)//2} windows, tape {len(tape)} outcomes")
 
-    rows = []
-    for w, winner in sorted(tape.items()):
+    # THE FUNNEL. "29 of 431" is not a finding, it is a question; every stage
+    # that drops windows is counted so the shortfall can be fixed rather than
+    # waited out blindly.
+    both = {w for (w, s_) in book if (w, "up") in book and (w, "down") in book}
+    rows, n_tape = [], 0
+    n_priced = n_gated = 0
+    for w in sorted(both):
+        winner = tape.get(w)
+        if winner is None:
+            continue
+        n_tape += 1
         t = tilt_at(grid, w)
         if not t or t[0] is None:
             continue
+        n_priced += 1
         tilt, pick = t[0], t[1]
         if abs(tilt) < GATE:
             continue
-        ours = book.get((w, pick))
-        other = book.get((w, "down" if pick == "up" else "up"))
-        if ours is None or other is None:
-            continue
-        rows.append((ours, ours - other, pick == winner, w, tilt))
-    print(f"{len(rows)} windows clear the {GATE}bp gate AND have a pre-open "
-          f"book on both sides\n")
+        n_gated += 1
+        rows.append((book[(w, pick)],
+                     book[(w, pick)] - book[(w, "down" if pick == "up"
+                                             else "up")],
+                     pick == winner, w, tilt))
+    print(f"  book has BOTH sides at T-{LEAD} : {len(both)}")
+    print(f"  ... and a settled outcome      : {n_tape}")
+    print(f"  ... and the grid can price it  : {n_priced}"
+          f"   ({len(both) and 100*n_priced/max(1, n_tape):.0f}% of the above)")
+    print(f"  ... and it clears {GATE}bp        : {n_gated}\n")
     if len(rows) < 60:
         raise SystemExit(
             "too few to say anything. The pre-open book leads (WINDOW+n) were\n"
