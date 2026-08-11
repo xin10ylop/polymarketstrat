@@ -2909,3 +2909,55 @@ them in that order.
   assumes the observed 61.9% is the true rate, and 61.9% comes from a 91%-of-
   22-fills day followed by 46% of 41. The two days are inconsistent at
   p ~ 0.0005. Do not expect resolution tomorrow; expect the rate to fall.
+
+- 2026-08-11 THE CEILING HYPOTHESIS IS DEAD, AND IT FAILED BACKWARDS ON BTC.
+  I predicted tightening PREOPEN_MAX_PX would help because a 0.56 fill needs
+  57.73% to break even. On btc the effect runs the OTHER WAY:
+
+      btc 5m    ceiling 0.50: 24 fills, 45.8%, edge -4.66c, P&L -276.00
+                ceiling 0.56: 130 fills, 56.2%, edge +1.97c, P&L +471.38
+      btc 15m   ceiling 0.50: 34 fills, 47.1%, edge -2.68c, P&L  -60.76
+                ceiling 0.56:  63 fills, 61.9%, edge +9.55c, P&L +574.99
+
+  THE CHEAPEST FILLS LOSE MONEY ON BOTH BTC BOTS. eth 5m runs the opposite
+  way (0.50 -> 62.5%, 0.56 -> 42.0%), so the coins disagree and no single
+  ceiling rule is supported. Do not change PREOPEN_MAX_PX.
+
+  WHAT THE BTC DIRECTION SUGGESTS, and it contradicts the strategy's stated
+  premise. preopen.py refuses a leaning book on the theory that "the makers
+  priced the tilt first and the edge shrinks one-for-one". The data says the
+  opposite: a HIGH ask on our side means the book already agrees with the
+  tilt, and those are the fills that win. A LOW ask means we are buying the
+  side the book thinks will lose. If that holds up it is a signal, not a
+  cost — but it is 2 days on one coin with the other coin disagreeing, and
+  it is exactly the shape of thing this project has retracted twice. Test it
+  properly on the tape archive before touching anything.
+
+  NOT ONE CELL IN THE WHOLE SWEEP HAS A POSITIVE 95% LOWER BOUND. Four bots,
+  seven ceilings each: every '95% lo' is negative. No configuration of any
+  bot has a demonstrable edge yet.
+
+- 2026-08-11 "IT STARTED REALLY WELL, WHAT HAPPENED" — NOTHING HAPPENED, AND
+  HERE IS THE ARITHMETIC. From btc 5m's own recorded parameters (137.5 shares
+  at 0.5244, win +$62.98, loss -$74.48, 65 fills/day):
+
+      per fill    mean +$2.71   sd $68.21
+      per day     mean  +$176   sd  $550
+      over 2 days mean  +$352   sd  $778     observed +471.38
+
+  A +$471 two-day result is 0.61 standard deviations from ZERO. Day 1
+  (+471.84) and day 2 (-0.46) had the SAME 56% win rate; the difference
+  between them is entirely which trades happened to win. The daily noise band
+  is +/-$550 around a +$176 expectation, so a good first day and a flat
+  second are both unremarkable draws from the same distribution.
+
+  At this edge the cumulative needs about 39 DAYS to sit two standard
+  deviations from zero. That is the whole answer: the strategy did not
+  degrade, it was never yet measurable, and no amount of watching the running
+  total will change that before roughly mid-September.
+
+  btc 15m IS the one that genuinely collapsed: in-sample edge +21.45c,
+  out-of-sample -1.99c. That is a 91%-of-22-fills day reverting, not a
+  strategy breaking. entry_ceiling now prints the in-sample vs out-of-sample
+  edge even when the incumbent ceiling wins, because "the current ceiling is
+  already the best cell" was hiding that collapse behind a reassuring line.

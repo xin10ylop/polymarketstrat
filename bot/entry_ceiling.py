@@ -101,10 +101,22 @@ def report(name, fills):
           f"On the second half:")
     print(f"    ceiling {CURRENT:.2f}: n={cur[0]:>3} edge {cur[4]:+.2f}¢  "
           f"P&L {cur[6]:+.2f}")
-    print(f"    ceiling {best:.2f}: n={new[0]:>3} edge {new[4]:+.2f}¢  "
-          f"P&L {new[6]:+.2f}")
+    if best != CURRENT:
+        print(f"    ceiling {best:.2f}: n={new[0]:>3} edge {new[4]:+.2f}¢  "
+              f"P&L {new[6]:+.2f}")
     if best == CURRENT:
         print("    the current ceiling is already the best cell in sample.")
+        # THE COMPARISON THAT MATTERS WHEN NOTHING BEATS THE INCUMBENT is
+        # not which ceiling won, it is whether the incumbent's own edge
+        # SURVIVED. btc 15m picked 0.56 at +21.45c in sample and delivered
+        # -1.99c out of it; printing only "current wins" would have hidden
+        # the collapse behind a reassuring sentence.
+        drop = cur[4] - best_edge
+        print(f"    but its in-sample edge was {best_edge:+.2f}¢ and out of "
+              f"sample it is {cur[4]:+.2f}¢ ({drop:+.2f}¢).")
+        if drop < -3.0:
+            print("    THAT IS A COLLAPSE, not a ceiling question. The first")
+            print("    half was a good draw; the second is the strategy.")
     elif new[4] > cur[4]:
         print("    the tighter ceiling holds out of sample. Worth acting on")
         print("    once the other bots agree — a real effect is shared.")
