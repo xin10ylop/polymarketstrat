@@ -112,6 +112,18 @@ check_true("the clean case still had a near-tie population to fish in",
            "where alignment can matter at all" in out
            and "Too few to scan" not in out)
 
+print("\nthe tie-band sweep prices both costs, not just the one we want")
+# A band is only defensible if the table shows what it BLINDS as well as what
+# it silences. audit D10 found 2.0bp switched the tripwire off on 34-71% of
+# windows; a sweep that reported only "no false alarms" would recommend 2.0.
+check_true("the sweep reports the blind cost alongside the errors",
+           "blind%" in out and "errors left" in out)
+check_true("and marks the first band that clears the false alarms",
+           "first band with NO false alarms" in out
+           or "NO BAND CLEARS THE ERRORS" in out)
+check_true("the current setting is marked so the change is visible",
+           "<- current" in out)
+
 print()
 if FAILED:
     print(f"{len(FAILED)} FAILED: {FAILED}")

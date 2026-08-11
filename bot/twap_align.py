@@ -230,6 +230,49 @@ def main():
               f"{acc(base_b):.1f}%). That is a fitted")
         print("cell, not a convention. Do not change the oracle on it.")
 
+    # ---- 3. WHAT TIE BAND IS THE MEASUREMENT ACTUALLY ENTITLED TO? --------
+    # If the estimator is right and the alignment is right, what is left is
+    # the irreducible residual of approximating a published TWAP STREAM with
+    # a uniform mean of 1-second samples. The tripwire must sit ABOVE that
+    # residual or it fires on our own arithmetic — which is what has been
+    # happening. But a band that is too wide blinds the tripwire instead
+    # (audit D10 found 2.0bp switched it off on 34-71% of windows), so the
+    # band is a measurement, not a preference. Both costs, priced together.
+    called = [(abs(bp), w == x) for (w, x, bp) in
+              ((c[0], winner, c[1]) for wts, winner in rows
+               for c in [call(grid, wts, 0, NSEC)] if c[0] is not None)]
+    n_called = len(called)
+    print(f"\n=== 3. TIE BAND: SENSITIVITY vs FALSE ALARMS, {n_called} calls ===")
+    print(f"{'band':>6} {'blind':>7} {'blind%':>8} {'errors left':>12} "
+          f"{'accuracy above band':>20}")
+    choice = None
+    for band in (0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.8, 1.0, 1.5, 2.0):
+        blind = sum(1 for m, _ in called if m < band)
+        above = [okk for m, okk in called if m >= band]
+        left = sum(1 for okk in above if not okk)
+        a2 = 100.0 * sum(above) / len(above) if above else 0.0
+        mark = ""
+        if left == 0 and choice is None:
+            choice, mark = band, "   <- first band with NO false alarms"
+        print(f"{band:>6.1f} {blind:>7} {100*blind/n_called:>7.1f}% "
+              f"{left:>12} {a2:>19.1f}%{mark}"
+              + ("   <- current" if abs(band - TIE) < 1e-9 else ""))
+    print()
+    if choice is not None:
+        print(f"EVERY DISAGREEMENT THIS ARCHIVE CONTAINS IS INSIDE {choice}bp.")
+        print(f"At that band the tripwire is blind to "
+              f"{100*sum(1 for m,_ in called if m < choice)/n_called:.0f}% of "
+              f"windows and reads the rest at 100%.")
+        print("A band below it does not make the tripwire more sensitive to")
+        print("real defects — there are none up there to find — it only makes")
+        print("it fire on our own reconstruction residual, which is what")
+        print("halted the fleet. Set ORACLE_TIE_BPS from this column, and")
+        print("only after the same table on the other coin agrees.")
+    else:
+        print("NO BAND CLEARS THE ERRORS. Some disagreement survives at 2bp,")
+        print("which a sampling residual cannot explain — that is a real")
+        print("defect and the tie band is not the answer to it.")
+
 
 if __name__ == "__main__":
     main()

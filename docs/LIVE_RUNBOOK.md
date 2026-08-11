@@ -2641,3 +2641,52 @@ them in that order.
   answer is a tie band matched to the MEASURED error rather than a guessed
   0.3 — but that is a decision to take on evidence, after the scan, not a
   way to make the alarm stop.
+
+- 2026-08-11 ALIGNMENT RULED OUT TOO, AND I OVER-READ THE THREE MISMATCHES.
+  twap_align on both coins, chosen on the first half of the near-tie windows
+  and reported on the second: btc "nothing beats the current alignment out of
+  sample (94.2% vs 92.5%)", eth the same (92.5% vs 92.5%). No boundary offset
+  and no window length reads the settlement feed better. Estimator ruled out,
+  alignment ruled out.
+
+  THE ONE-SIDEDNESS I FLAGGED IS NOT ESTABLISHED. On the FULL error set
+  rather than the three the tripwire happened to flag:
+      btc   3 down/up vs 2 up/down   60%
+      eth   4 down/up vs 0 up/down  100%  (n=4)
+      combined 7 of 9, p ~ 0.18 — not significant
+  The flagged set is selected BY MAGNITUDE — only errors above 0.3bp are
+  flagged at all — so it was never a fair sample of directions. btc's two
+  up/down errors were +0.050bp and +0.015bp and were invisible to the
+  tripwire by construction. I read a bias into a filtered sample; it is
+  suggestive at most and n=9 cannot establish it.
+
+  WHAT DOES HOLD, AND IT IS THE STRONGER RESULT:
+
+      ZERO ERRORS ON WINDOWS DECIDED BY MORE THAN 1bp, 809 windows, 2 coins.
+      All 9 errors lie within 0.421bp of a tie.
+      btc |error| median 0.050 max 0.310    eth median 0.303 max 0.421
+
+  The reconstruction is sound. THE TIE BAND IS THE DEFECT: 0.3bp sits BELOW
+  the measured residual of 0.421bp, so the tripwire fires on our own
+  arithmetic. The config asserts "against a reconstructed TWAP the
+  measurement error is ~0.05bp" — that is wrong by roughly 8x and is the
+  line that produced this. We approximate a published TWAP STREAM with a
+  uniform mean of 1s samples; a few tenths of a bp is structural and does not
+  go away without subscribing to the stream itself.
+
+  So 98.5% was never the right accuracy number either. Accuracy ABOVE the
+  band is what the tripwire actually needs, and that is 100%.
+
+  twap_align section 3 prices the band as a measurement instead of a
+  preference, showing BOTH costs per candidate: how many windows the band
+  blinds, and how many errors survive it. That second column is the guard
+  against the obvious failure — audit D10 found 2.0bp switched the tripwire
+  off on 34-71% of windows, and a sweep reporting only "no false alarms"
+  would happily recommend 2.0. Smoke-tested against a fixture with six
+  errors planted only below 0.45bp: it reports 0.4 as the first clean band
+  and 100% above it, as constructed.
+
+  SET ORACLE_TIE_BPS FROM THAT TABLE, on the two coins agreeing, then clear
+  the mismatch and restart btc. Do not pick a band because it silences the
+  alarm; pick the smallest one with no false alarms and accept the blind
+  fraction it costs.
