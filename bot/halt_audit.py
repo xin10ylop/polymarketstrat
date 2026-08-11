@@ -75,14 +75,26 @@ def family_of(path):
 
 
 def spans(db):
-    """[(start, end_or_None, reason)] — HALT rows paired with their lifts.
+    """[(start, end_or_None, reason, how)] — halts paired with how they ended.
 
-    HALT_LIFTED carries the same reason text as its HALT, but the ledger does
-    not link them by id, so this pairs strictly in time order and treats an
-    unmatched HALT as still in force. That is the conservative reading: it
-    can overstate a halt that was lifted by a restart rather than by the
-    breaker, never understate one.
+    `how` is "lifted" (the breaker released it), "restart" (a deploy cleared
+    the in-memory halt set, which writes no HALT_LIFTED), or None (no
+    evidence it ever ended). HALT_LIFTED carries the same reason text as its
+    HALT but the ledger does not link them by id, so this pairs strictly in
+    time order.
     """
+    # PROOF THE LOOP WAS ALIVE AGAIN. A halt cleared by a RESTART writes no
+    # HALT_LIFTED — the in-memory halt set is simply gone — so an unlifted
+    # halt has no end marker and would run to the present for ever, growing
+    # by an hour every hour. These kinds cannot be written by a halted bot,
+    # so the first one after a halt starts is the moment it came back.
+    # Deliberately NOT every event kind: the settlement healer writes rows
+    # while a bot is halted, and counting those would end the dark period
+    # early — this errs toward reporting MORE censoring, never less.
+    alive = ("preopen_entry", "preopen_mark", "SHADOW_HALT", "start")
+    revive = [ts for ts, k in db.execute(
+        "SELECT ts, kind FROM events WHERE kind IN "
+        f"({','.join('?' * len(alive))}) ORDER BY ts", alive)]
     rows = list(db.execute(
         "SELECT ts, kind, detail FROM events "
         "WHERE kind IN ('HALT','HALT_LIFTED','SHADOW_HALT') ORDER BY ts"))
@@ -95,10 +107,11 @@ def spans(db):
             if open_at is None:                  # a re-halt after a restart
                 open_at, open_why = ts, detail   # is the same dark period
         elif kind == "HALT_LIFTED" and open_at is not None:
-            out.append((open_at, ts, open_why))
+            out.append((open_at, ts, open_why, "lifted"))
             open_at, open_why = None, ""
     if open_at is not None:
-        out.append((open_at, None, open_why))
+        back = next((t for t in revive if t > open_at), None)
+        out.append((open_at, back, open_why, "restart" if back else None))
     return out, shadows
 
 
@@ -131,7 +144,7 @@ def main():
             if e is not None:
                 return e
             return now if state == "active" else last
-        dark = sum(close(e) - s for s, e, _ in per)
+        dark = sum(close(e) - s for s, e, _, _ in per)
         lost = int(dark // T)
         if state == "active":
             live_dark += dark
@@ -143,14 +156,15 @@ def main():
             # open halt could be a live bot sitting dark or a unit deleted
             # last week, and those differ by orders of magnitude. Report the
             # bounds instead of picking one and calling it a measurement.
-            hi = sum((e if e is not None else now) - s for s, e, _ in per)
+            hi = sum((e if e is not None else now) - s
+                     for s, e, _, _ in per)
             unsure.append((name, dark, hi, int(hi // T)))
         if per or shadows:
             print(f"{name:<22} {state:>8} {dark/3600:>8.2f}h {lost:>8}  "
                   f"{len(per)} halt(s), {len(shadows)} shadow")
-            for s, e, why in per:
+            for s, e, why, how in per:
                 end = close(e)
-                tag = ("lifted" if e is not None else
+                tag = (how if how else
                        "STILL DARK" if state == "active" else
                        "unit gone" if state == "stopped" else "unknown")
                 print(f"  {'':<20} "

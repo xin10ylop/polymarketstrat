@@ -2435,3 +2435,38 @@ them in that order.
   a TWAP settlement looks like; scripts/clear_rule_change_mismatches.py
   exists for exactly this. The current pre-open bots are unaffected — 0
   mismatches across 214 settled windows, 135 with an oracle opinion.
+
+- 2026-08-11 RESOLVED, ALL FOUR PRE-OPEN BOTS TRADING. btc 5m logged
+  "SHADOW daily stop: loss -308.68 < -250.00" at 12:17 and evaluated its next
+  window at 12:19:57 (flat_tilt -0.34bp < 0.5bp). Achieved leads across the
+  fleet on the new firing window: btc 2.99s, eth 2.96s, eth 15m 2.95s,
+  btc 15m 3.00s, against a 3s target — so the widened band is not being
+  leaned on, it is simply no longer dropping the windows it used to.
+  _mismatches: 0 on all four.
+
+  ONE MORE halt_audit DEFECT, FOUND IN ITS OWN OUTPUT: it still showed btc as
+  STILL DARK -> now, five hours and counting, while the bot was visibly
+  trading. A halt cleared by a RESTART writes no HALT_LIFTED — the in-memory
+  halt set is simply gone — so an unlifted halt had no end marker and grew by
+  an hour every hour. A halt now ends at the first ledger row a halted bot
+  could not have written (preopen_entry, preopen_mark, SHADOW_HALT, start).
+  The settlement healer is deliberately NOT in that list: it writes while a
+  bot is halted, and counting it would end the dark period early, which
+  understates censoring — the direction that makes a bad ledger look usable.
+
+  This is the third correction to a tool built in one afternoon to audit
+  trustworthiness, so it now has scripts/test_halt_audit.py holding the
+  pairing rules. Three suites gate the pre-open deploy:
+      scripts/test_preopen_strike.py     73 assertions
+      scripts/test_risk_shadow_stop.py   21 assertions
+      scripts/test_halt_audit.py          9 assertions
+
+  STANDING FLEET STATE at 12:23 UTC (censored, per the entry above):
+      btc 5m    76 fills   +163.16   pnl_today -308.68  (shadow-tripped)
+      btc 15m   32 fills   +634.79   pnl_today -142.02
+      eth 5m    60 fills   -511.46   pnl_today -144.39
+      eth 15m    0 fills      0.00   (1.7bp gate, nothing has cleared it)
+
+  NEXT, AND NOT TONIGHT: re-price the 142 censored windows from the tape
+  archive so the live ledgers can be compared against an uncensored estimate.
+  Until that is done the btc 5m +$163/56% figure is an upper bound.
