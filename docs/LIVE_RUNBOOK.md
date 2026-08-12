@@ -3144,3 +3144,45 @@ them in that order.
   NOTHING IS BEING CHANGED ON ANY OF THIS. Clip unchanged, ceiling
   unchanged, gates unchanged. The fleet's configuration is now supported by
   measurement at every parameter that was questioned today.
+
+- 2026-08-12 btc 15m IS NOT THE BEST BOT. ITS RESULT IS ONE DAY.
+
+      08-10   20/22 = 90.9%   +776.81
+      08-11   19/41 = 46.3%   -201.82
+      pooled  39/63 = 61.9%   CI [49.6, 72.9]   break-even 52.35%  straddles
+
+  P(>=20 of 22) at the pooled 61.9% rate is 0.00267 — a one-in-375 day
+  against its OWN best estimate. The two days are not consistent with a
+  single rate, and the whole +574.99 rests on the extreme one. The second
+  day, which has nearly twice the fills, is 46.3% with a CI of [32.1, 61.3]:
+  point estimate BELOW break-even.
+
+  So its headline +575 does NOT make it better than btc 5m's +471. It makes
+  it noisier. Read them as: both straddle, btc 5m on 130 fills and btc 15m on
+  63 of which 22 are the outlier day. (The 0.00267 is post-hoc — with two
+  days the more extreme one will always look extreme — but 20 of 22 is
+  remarkable however it is framed.)
+
+  ONE REAL ADVANTAGE THE 15m FAMILY DOES HAVE: entry price. btc 15m fills at
+  0.5061 against btc 5m's 0.5244, so its break-even is 52.35% rather than
+  54.19% — nearly two points lower a bar, structurally, because the pre-open
+  book is flatter when the window is longer. That is worth more than any gate
+  tuned today, and it is the reason to keep the 15m family running.
+
+- 2026-08-12 eth 15m IS STARVED BY DESIGN, AND THAT IS PROBABLY CORRECT.
+  9 fills, 5/9 = 55.6%, CI [26.7, 81.1] against a 56.44% break-even. Useless,
+  and it will stay useless for a while: the 1.7bp gate passes about 4.5 fills
+  a day, so 100 fills is 22 days and 200 is 44.
+
+  DO NOT LOWER THE GATE TO COLLECT FASTER. The 1.7 came from the measured
+  rule gate ~= 0.31 * vol * sqrt(window) (0.31 * 0.185 * 30 = 1.72), and the
+  08-10 bucket work found eth separates only ABOVE 1bp — 1.0-1.5 57.1%,
+  1.5-2.0 59.6%, 2.0-3.0 61.1%. Lowering the gate would buy volume by
+  trading exactly the windows eth is known to be bad at. Slow and correct
+  beats fast and wrong; leave it.
+
+  NOT YET RUN ON THE 15m FAMILY: lean_test and slippage. Both need
+  FAMILY=15m, and their tape caches are STILL STALE — only the 5m caches
+  were backfilled. Note 15m accumulates a THIRD of the windows per day, so
+  lean_test will likely sit under its 60-window floor for another week;
+  slippage should work now on btc 15m's ~60 entries.
