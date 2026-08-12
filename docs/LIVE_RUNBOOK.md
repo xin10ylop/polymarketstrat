@@ -3186,3 +3186,42 @@ them in that order.
   were backfilled. Note 15m accumulates a THIRD of the windows per day, so
   lean_test will likely sit under its 60-window floor for another week;
   slippage should work now on btc 15m's ~60 entries.
+
+- 2026-08-12 btc 15m HAS THE BEST EXECUTION IN THE FLEET, AND IT IS
+  STRUCTURAL. Slippage measured on its own entries:
+
+      bot        quoted     slip      paid   break-even
+      btc 15m    0.4973   +0.90c    0.5063     52.38%
+      btc 5m     0.5106   +1.47c    0.5253     54.28%
+      eth 5m     0.5153   +2.35c    0.5388     55.62%
+
+  btc 15m is BOTH cheaper at the quote AND slips less, so after execution
+  its bar is 1.90 POINTS LOWER than btc 5m's. That is larger than any edge
+  either bot has demonstrated, and it is not a tuning choice — it is what
+  the market charges for the longer window.
+
+  WHY THE 15m BOOK IS CHEAPER: a 15-minute outcome is more uncertain than a
+  5-minute one, so the pre-open book sits closer to 0.50. The same reason
+  makes the tilt easier to overwhelm inside the window, which is why the
+  gate is 1.0bp there against 0.5 on the 5m — the vol rule
+  (0.31 * vol * sqrt(window)) already prices exactly that trade-off. The two
+  effects roughly offset, which is why both families are worth running.
+
+  btc 15m still sweeps (16 of 22 entries had a touch under 125 against a 250
+  clip, +1.07c against +0.52c on the deeper band), so its book is CHEAPER,
+  not DEEPER. Too few deep-band windows yet to run the clip sweep on it.
+
+- 2026-08-12 WHEN EACH REMAINING QUESTION BECOMES ANSWERABLE. lean_test
+  gated windows accumulate at roughly a quarter of the book rate, and the
+  book accumulates at 288/day (5m) or 96/day (15m):
+
+      btc 5m    115 now  ->  200 in ~1 day
+      eth 5m     93      ->  200 in ~2 days
+      btc 15m    36      ->  200 in ~7 days
+      eth 15m    10      ->  200 in ~19 days
+
+  eth 15m is last because its book recorder was added most recently (69
+  windows against btc 15m's 143) AND its 1.7bp gate passes least. Nothing
+  is wrong with it; it is simply the newest and strictest.
+
+  eth 15m slippage has TWO matched entries. Not a number.
