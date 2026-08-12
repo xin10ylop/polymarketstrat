@@ -57,9 +57,16 @@ def look(path):
         pk = max(pk, eq)
         worst = min(worst, eq - pk)
     days = max(1.0, (rows[-1][0] - rows[0][0]) / 86400.0)
+    # "IT IS NOT MOVING" IS USUALLY THE 15m FAMILY BEING SLOW BY DESIGN: it
+    # sees 96 windows a day against the 5m family's 288, and enters about a
+    # fifth of them. Showing the RATE and the last trade time answers that
+    # at a glance, where a lifetime total never can.
+    now = time.time()
+    day = [r for r in rows if r[0] > now - 86400]
     return {"n": n, "wins": wins, "pnl": eq, "rate": wins / n, "be": be,
             "lo": lo, "hi": hi, "worst": worst, "per_day": n / days,
-            "mism": mism}
+            "mism": mism, "n24": len(day),
+            "pnl24": sum(r[3] for r in day), "last": rows[-1][0]}
 
 
 def verdict(s):
@@ -115,6 +122,9 @@ def main():
             print(f"      {when}")
         print(f"   worst losing run: {s['worst']:+,.0f} dollars from its best "
               f"point")
+        ago = (time.time() - s["last"]) / 60.0
+        print(f"   last 24 hours: {s['n24']} trades, {s['pnl24']:+,.0f} "
+              f"dollars   (newest trade {ago:.0f} min ago)")
         if s["mism"]:
             print(f"   !! {s['mism']} settlement disagreement(s) — HALTED")
             trouble.append(f"{name} has a settlement disagreement")
@@ -129,6 +139,12 @@ def main():
     else:
         print("  Nothing needs attention. The bots are running normally.")
     print("=" * 68)
+    print("\nWHY THE 15-MINUTE BOTS LOOK FROZEN. They get one window every")
+    print("15 minutes where the 5-minute bots get one every 5, and both only")
+    print("trade about a fifth of what they see — so a 15-minute bot makes")
+    print("roughly 19 trades a day against 58. It is also normal for a total")
+    print("to sit still for an hour: a trade only counts once its window has")
+    print("closed AND settled, which is 5 or 15 minutes later plus a minute.")
     print("\nWHY 'could still be luck' KEEPS APPEARING. Flip a fair coin 160")
     print("times and you will often see 57% heads. The bots have not yet made")
     print("enough trades for a good result to be distinguishable from that.")
