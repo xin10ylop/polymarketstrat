@@ -3260,7 +3260,7 @@ them in that order.
     - lean_test and slippage were always per-window/per-entry and are
       unaffected.
 
-  FIX: pnl_dailyureand plain aggregate fills to the WINDOW before counting
+  FIX: pnl_daily and plain aggregate fills to the WINDOW before counting
   anything (sum pnl, size-weighted entry, one win/lose per window).
   Smoke-tested: one winning decision written as 3 rows plus one losing
   single-row decision reports 2 trades at 50%, not 4 at 75%. Verdict wording
