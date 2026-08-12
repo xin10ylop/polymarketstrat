@@ -3096,3 +3096,51 @@ them in that order.
   It now refuses to show any clip above the largest observed fill. Fourth
   instance today of a tool being confidently wrong in the flattering
   direction; the smoke test with a known answer is what caught every one.
+
+- 2026-08-12 THE CLIP STAYS AT 250, AND THE SLIPPAGE FINDING IS GOOD NEWS.
+
+      clip   avg price   edge¢/sh   $/trade
+        25     0.5197      +2.77c     +0.69
+        50     0.5201      +2.73c     +1.37
+       100     0.5212      +2.62c     +2.62
+       150     0.5224      +2.50c     +3.75
+       200     0.5236      +2.38c     +4.77
+       250     0.5252      +2.22c     +5.55   <- current, best observed
+
+  $/trade rises monotonically to 250: the marginal share is still positive
+  because the per-share edge falls only 2.77 -> 2.22c while the position
+  grows tenfold. CUTTING THE CLIP WOULD HAVE COST MONEY, which is exactly
+  where "slippage is 1.47c, shrink it" leads. The price column alone must
+  never decide a size question.
+
+  (The table stops at 250 because that is the largest fill observed; a
+  larger clip may or may not still be marginally positive and there is no
+  data either way. Do not raise it on this table.)
+
+  THE PART THAT MATTERS FOR REAL MONEY. Live size is NOT set by
+  PREOPEN_CLIP, it is set by the per-trade cap of 10% of bankroll at the
+  limit price:
+
+      bankroll $150 ->  27 shares      $1200 -> 214 shares
+                $300 ->  54                  $2400 -> 429
+                $600 -> 107
+
+  Every rung below $1200 trades FEWER shares than paper does, so it sweeps
+  less and pays closer to the touch. At 27 shares the modelled price is
+  0.5197 against paper's 0.5252 — the per-share edge is 2.77c rather than
+  2.22c, a QUARTER better. The paper ledger is therefore a CONSERVATIVE
+  estimate of the per-share edge for a small live account, not an optimistic
+  one. That is the first thing found in this whole project that makes live
+  look better than paper rather than worse.
+
+  STILL OPEN AND WORTH A SESSION: the +0.84c that remains when the touch is
+  DEEPER than the clip. That is not sweeping — it is the book moving between
+  the recorder's T-3 REST snapshot and the bot's fire, or the two sampling
+  different instants. On a 3.5c edge it is 24%, so it is the largest
+  remaining execution question, and it is a TIMING question rather than a
+  size one. eth cannot be diagnosed yet: all 19 of its matched entries had a
+  touch under 125 shares, so there is no deep-book band to compare against.
+
+  NOTHING IS BEING CHANGED ON ANY OF THIS. Clip unchanged, ceiling
+  unchanged, gates unchanged. The fleet's configuration is now supported by
+  measurement at every parameter that was questioned today.
