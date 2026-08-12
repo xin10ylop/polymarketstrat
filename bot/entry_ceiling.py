@@ -5,10 +5,14 @@
 WHAT PROVOKED THIS. The four bots' average entry prices, and their results,
 rank together almost perfectly:
 
-    btc 15m  entry 0.5061  break-even 52.35%  ->  61.9%
-    btc 5m   entry 0.5244  break-even 54.19%  ->  56.2%
-    eth 5m   entry 0.5338  break-even 55.12%  ->  42.0%
-    eth 15m  entry 0.5471  break-even 56.45%  ->  55.6%
+    btc 15m  entry 0.5061  break-even 52.35%
+    btc 5m   entry 0.5244  break-even 54.19%
+    eth 5m   entry 0.5338  break-even 55.12%
+    eth 15m  entry 0.5471  break-even 56.45%
+
+(The win rates originally quoted alongside these were per FILL ROW and have
+been dropped; see the 2026-08-13 runbook entry. The entry prices are
+size-weighted and unaffected. Everything below now counts DECISIONS.)
 
 The bar moves 52.35% -> 56.45% across the fleet — a four-point swing, larger
 than any edge being measured. The strategy's own docstring says the pre-open
@@ -66,7 +70,7 @@ def score(fills, ceiling):
 
 
 def report(name, fills):
-    print(f"=== {name} — {len(fills)} settled fills ===")
+    print(f"=== {name} — {len(fills)} settled trades ===")
     print(f"{'ceiling':>8} {'kept':>6} {'%kept':>6} {'win%':>6} {'entry':>7} "
           f"{'b/e%':>6} {'edge¢':>7} {'95% lo':>8} {'P&L $':>10}")
     for c in CEILINGS:
@@ -85,7 +89,7 @@ def report(name, fills):
     half = len(fills) // 2
     a, b = fills[:half], fills[half:]
     if half < 15:
-        print("  (too few fills to split; treat the table as exploratory)\n")
+        print("  (too few trades to split; treat the table as exploratory)\n")
         return
     best, best_edge = None, None
     for c in CEILINGS:
@@ -137,9 +141,25 @@ def main():
         name = os.path.basename(os.path.dirname(path))
         db = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
         try:
-            fills = db.execute(
-                "SELECT ts, price, size, pnl FROM fills "
+            # ONE DECISION = ONE TRADE, not one fill row. take() writes a row
+            # per price level swept (audit F4), so counting rows inflated n
+            # by 1.8x on btc and 3.6x on eth AND weighted thin-book windows
+            # most — exactly the windows a ceiling question is about. Every
+            # row of a window shares one entry decision and one outcome, so
+            # they are aggregated to the window here too.
+            raw = db.execute(
+                "SELECT ts, wts, price, size, pnl FROM fills "
                 "WHERE pnl IS NOT NULL ORDER BY ts").fetchall()
+            agg = {}
+            for ts, w, px_, sz_, pnl_ in raw:
+                a = agg.setdefault(w, [ts, 0.0, 0.0, 0.0])
+                a[0] = max(a[0], ts)
+                a[1] += px_ * sz_
+                a[2] += sz_
+                a[3] += pnl_
+            fills = sorted(([t, c / z if z else 0.0, z, p]
+                            for t, c, z, p in agg.values()),
+                           key=lambda r: r[0])
         except sqlite3.Error as e:
             print(f"{name}: unreadable ({str(e)[:40]})\n")
             continue

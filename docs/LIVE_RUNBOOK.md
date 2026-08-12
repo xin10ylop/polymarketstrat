@@ -3272,3 +3272,36 @@ them in that order.
   wrong granularity (rate-averaged gaps, day-end drawdown, day-end peak,
   clip extrapolation, verdict-at-boundary, and now rows-as-trades). The
   codebase even carried the warning; the new tools just did not read it.
+
+- 2026-08-13 THE CORRECTED COUNTS, AND WHAT THEY CHANGED. After aggregating
+  fill rows to decisions:
+
+      bot        was (rows)      now (decisions)   ratio   verdict date
+      btc 5m     174 @ 59%        93 @ 59%          1.9x   6 days -> ~18 Aug
+      btc 15m     67 @ 60%        27 @ 59%          2.5x  11 days -> ~23 Aug
+      eth 5m      94 @ 47%        27 @ 44%          3.5x   probably losing
+      eth 15m     10 @ 60%         3 @ 67%          3.3x   nothing to say
+
+  THE WIN RATES BARELY MOVED — the money and the rates were always right,
+  only the confidence attached to them was wrong. What changed is n, and with
+  it every interval and every date. btc 15m's verdict receded from 3 days to
+  11; eth 5m fell out of "proven losing" entirely, as flagged.
+
+  NOTE THE RATIO TRACKS BOOK THINNESS exactly as the slippage work predicted:
+  btc 5m 1.9x, btc 15m 2.5x, eth 3.3-3.5x. A thin touch forces the clip to
+  sweep more levels, each writing a row. So the per-row counting was not just
+  inflating n, it was inflating it MOST on the bots and windows with the
+  worst execution — the opposite of the weighting any of these questions
+  wants.
+
+  ALSO FIXED, same defect family: plain.py's closing paragraphs quoted "19
+  trades a day against 58" and "flip a coin 160 times". Both were true of
+  ROWS and silently became wrong when the counting was fixed. Prose that
+  states a figure now reads it from the same place the table does, with the
+  coin illustration floored at 100 so a two-trade sample is never quoted back
+  as evidence. entry_ceiling now aggregates too; its "change nothing" verdict
+  is unaffected, since widening an interval cannot turn a null into a signal.
+
+  STANDING RULE FROM ALL SIX INSTANCES: whenever a number is added to a
+  report, state the UNIT it counts, and if prose quotes the number, compute
+  it rather than typing it.

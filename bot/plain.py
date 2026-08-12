@@ -120,6 +120,8 @@ def main():
     print("  money back. Everything below is judged against that, not 50%.")
     print("=" * 68)
     total, trouble = 0.0, []
+    fast = slow = 0.0
+    big = 0
     for path in sorted(glob.glob("bot/data/preopen-*/paper.db")):
         key = os.path.basename(os.path.dirname(path))
         s = look(path)
@@ -128,6 +130,11 @@ def main():
         name = NAMES.get(key, key)
         state = unit_state(key)
         total += s["pnl"]
+        big = max(big, s["n"])
+        if "15" in key:
+            slow = max(slow, s["n24"])
+        else:
+            fast = max(fast, s["n24"])
         print(f"\n{name}   {s['pnl']:+,.0f} dollars")
         # "unknown" means the service manager could not be asked, NOT that
         # the bot is down. Reporting a failed check as a failure would cry
@@ -163,17 +170,28 @@ def main():
     else:
         print("  Nothing needs attention. The bots are running normally.")
     print("=" * 68)
-    print("\nWHY THE 15-MINUTE BOTS LOOK FROZEN. They get one window every")
-    print("15 minutes where the 5-minute bots get one every 5, and both only")
-    print("trade about a fifth of what they see — so a 15-minute bot makes")
-    print("roughly 19 trades a day against 58. It is also normal for a total")
-    print("to sit still for an hour: a trade only counts once its window has")
-    print("closed AND settled, which is 5 or 15 minutes later plus a minute.")
-    print("\nWHY 'could still be luck' KEEPS APPEARING. Flip a fair coin 160")
-    print("times and you will often see 57% heads. The bots have not yet made")
-    print("enough trades for a good result to be distinguishable from that.")
-    print("The only cure is more trades, which is why the dates above matter")
-    print("more than today's dollar figure.")
+    # THESE TWO PARAGRAPHS QUOTE NUMBERS, so they are computed rather than
+    # written down. The hardcoded versions said "19 trades a day against 58"
+    # and "flip a coin 160 times" — both were true of FILL ROWS and became
+    # wrong the moment the counting was fixed to decisions. Prose that
+    # states a figure has to read it from the same place the table does.
+    if fast and slow:
+        print("\nWHY THE 15-MINUTE BOTS LOOK SLOW. They get one window every")
+        print("15 minutes where the 5-minute bots get one every 5, and both")
+        print("trade only a fraction of what they see. Over the last 24 hours")
+        print(f"that came to {fast:.0f} trades for a 5-minute bot against "
+              f"{slow:.0f} for a 15-minute one.")
+    print("\nIt is normal for a total to sit still for an hour: a trade only")
+    print("counts once its window has closed AND settled, which is 5 or 15")
+    print("minutes after it opened, plus a minute for the exchange.")
+    # floor the illustration: quoting a two-trade sample back at the reader
+    # as evidence about coin flips is worse than saying nothing
+    print(f"\nWHY 'could still be luck' KEEPS APPEARING. Flip a fair coin "
+          f"{max(big, 100)} times")
+    print("and you will often see a run that looks like an edge. The bots have")
+    print("not yet made enough trades for a good result to be distinguishable")
+    print("from that. The only cure is more trades, which is why the dates")
+    print("above matter more than today's dollar figure.")
 
 
 if __name__ == "__main__":
