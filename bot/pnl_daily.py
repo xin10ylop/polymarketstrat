@@ -78,18 +78,41 @@ def main():
         name = os.path.basename(os.path.dirname(path))
         db = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
         try:
-            rows = db.execute(
-                "SELECT CAST(ts/86400 AS INT) d, COUNT(*), "
-                "COALESCE(SUM(pnl),0), COALESCE(SUM(fee),0), "
-                "SUM(CASE WHEN pnl > 0 THEN 1 ELSE 0 END) "
-                "FROM fills WHERE pnl IS NOT NULL GROUP BY d ORDER BY d"
-            ).fetchall()
+            raw = db.execute(
+                "SELECT ts, wts, price, size, fee, pnl FROM fills "
+                "WHERE pnl IS NOT NULL ORDER BY ts").fetchall()
         except sqlite3.Error as e:
             print(f"{name}: unreadable ({str(e)[:40]})\n")
             continue
-        if not rows:
+        if not raw:
             print(f"{name}: no settled fills yet\n")
             continue
+        # ONE DECISION = ONE TRADE. The executor writes a fill row PER PRICE
+        # LEVEL swept (audit F4 in ledger.py) — 1.8 rows per decision on btc,
+        # up to 4 on eth's thin book — and every row from one window settles
+        # together. Counting rows as trades inflated n on every win rate this
+        # tool printed, tightening the intervals by up to 2x; the "proven
+        # losing" eth verdict of 08-12 was issued on 85 rows that were ~24
+        # decisions, and flipped back the next morning. Aggregate to the
+        # WINDOW before counting anything.
+        posmap = {}
+        for ts, w, px_, sz_, fee_, pnl_ in raw:
+            a = posmap.setdefault(w, [ts, 0.0, 0.0, 0.0, 0.0])
+            a[0] = max(a[0], ts)
+            a[1] += px_ * sz_
+            a[2] += sz_
+            a[3] += fee_
+            a[4] += pnl_
+        positions = sorted(posmap.values())     # by settle ts
+        byday = {}
+        for ts, cost, sz_, fee_, pnl_ in positions:
+            d = int(ts // DAY)
+            r = byday.setdefault(d, [0, 0.0, 0.0, 0])
+            r[0] += 1
+            r[1] += pnl_
+            r[2] += fee_
+            r[3] += 1 if pnl_ > 0 else 0
+        rows = [(d, r[0], r[1], r[2], r[3]) for d, r in sorted(byday.items())]
         # DRAWDOWN MUST COME FROM THE FILL-LEVEL CURVE, NOT THE DAILY ONE.
         # The first version reported day-END equity only, and on btc 5m that
         # turned a real -$580.18 drawdown from a +$743.34 peak into
@@ -97,9 +120,7 @@ def main():
         # up to +743 and back inside it. A daily series cannot see a round
         # trip that starts and finishes inside one day, and drawdown is the
         # whole reason this tool exists.
-        curve = db.execute(
-            "SELECT ts, pnl FROM fills WHERE pnl IS NOT NULL ORDER BY ts"
-        ).fetchall()
+        curve = [(ts, pnl_) for ts, cost, sz_, fee_, pnl_ in positions]
         eq = pk_f = 0.0
         worst_f, worst_at, pk_at = 0.0, None, None
         for ts, pnl in curve:
@@ -122,7 +143,7 @@ def main():
             hist.append((d, n, pnl, fee, wins, cum, cum - peak, peak))
         worst = min(h[6] for h in hist)
         print(f"=== {name} ===")
-        print(f"{'day (UTC)':<12} {'fills':>6} {'win%':>6} {'day P&L':>10} "
+        print(f"{'day (UTC)':<12} {'trades':>6} {'win%':>6} {'day P&L':>10} "
               f"{'cumulative':>11} {'peak':>10} {'drawdown':>10}")
         for d, n, pnl, fee, wins, c, dd, pk in hist[-DAYS:]:
             tag = ""
@@ -145,7 +166,7 @@ def main():
         if pk_f > 0:
             when = (time.strftime("%m-%d %H:%M", time.gmtime(worst_at))
                     if worst_at else "-")
-            print(f"INTRADAY (fill by fill, {len(curve)} fills): "
+            print(f"INTRADAY (trade by trade, {len(curve)} trades): "
                   f"peak {pk_f:+.2f} at "
                   f"{time.strftime('%m-%d %H:%M', time.gmtime(pk_at))}, "
                   f"worst drawdown {worst_f:+.2f} at {when} "
@@ -163,10 +184,9 @@ def main():
         # nothing; the interval says so and the total never will.
         wins = sum(1 for _, p in curve if p > 0)
         n = len(curve)
-        row = db.execute(
-            "SELECT COALESCE(SUM(price*size),0), COALESCE(SUM(size),0) "
-            "FROM fills WHERE pnl IS NOT NULL").fetchone()
-        px = (row[0] / row[1]) if row[1] else 0.5
+        tot_cost = sum(c for _, c, *_ in positions)
+        tot_sz = sum(z for _, _, z, *_ in positions)
+        px = (tot_cost / tot_sz) if tot_sz else 0.5
         be = breakeven(px)
         lo, hi = wilson(wins, n)
         wr = wins / n if n else 0.0

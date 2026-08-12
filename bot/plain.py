@@ -37,14 +37,31 @@ NAMES = {"preopen-btc": "BTC 5-minute", "preopen-btc15": "BTC 15-minute",
 def look(path):
     db = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
     try:
-        rows = db.execute("SELECT ts, price, size, pnl FROM fills "
-                          "WHERE pnl IS NOT NULL ORDER BY ts").fetchall()
+        raw = db.execute("SELECT ts, wts, price, size, pnl FROM fills "
+                         "WHERE pnl IS NOT NULL ORDER BY ts").fetchall()
         mism = db.execute(
             "SELECT COALESCE(SUM(mismatch),0) FROM settlements").fetchone()[0]
     except sqlite3.Error:
         return None
-    if not rows:
+    if not raw:
         return {"n": 0, "pnl": 0.0, "mism": mism}
+    # ONE DECISION = ONE TRADE. A single buy sweeps several price levels and
+    # the executor writes a fill ROW PER LEVEL (see audit F4 in ledger.py) —
+    # 1.8 rows per decision on btc, up to 4 on eth's thin book. Every row
+    # from one window settles together, so counting rows as trades inflated
+    # n and made every verdict more confident than the data supports; on
+    # 2026-08-12 it declared eth "proven losing" on 85 rows that were only
+    # ~24 decisions, and the verdict flipped back the next morning. Rows are
+    # aggregated to the WINDOW before anything is counted.
+    pos = {}
+    for ts, w, px_, sz_, pnl_ in raw:
+        a = pos.setdefault(w, [ts, 0.0, 0.0, 0.0])
+        a[0] = max(a[0], ts)
+        a[1] += px_ * sz_
+        a[2] += sz_
+        a[3] += pnl_
+    rows = sorted(([t, c / z if z else 0.0, z, p] for t, c, z, p in
+                   pos.values()), key=lambda r: r[0])
     n = len(rows)
     wins = sum(1 for r in rows if r[3] > 0)
     sz = sum(r[2] for r in rows) or 1.0
@@ -73,11 +90,18 @@ def verdict(s):
     """(headline, when we will know) in words, never in statistics."""
     if s["n"] < 15:
         return ("too few trades to say anything at all", "")
+    # A VERDICT MUST SURVIVE A FEW DAYS BEFORE IT IS TREATED AS SETTLED. On
+    # 08-12 this printed "LOSING, and that is real — more time will not
+    # rescue this one" about eth, and by the next morning the verdict had
+    # flipped back to unproven. A 95% line gets crossed falsely, especially
+    # when it is checked every day, so the words must not promise more than
+    # the test does.
     if s["hi"] < s["be"]:
-        return ("LOSING, and that is real — not bad luck",
-                "more time will not rescue this one")
+        return ("LOSING — too far below the bar to be bad luck",
+                "if it still says this in a few days, treat it as settled")
     if s["lo"] > s["be"]:
-        return ("WINNING, and we can now trust it", "proven")
+        return ("WINNING — unlikely to be luck",
+                "if it still says this in a few days, treat it as settled")
     edge = s["rate"] - s["be"]
     if edge <= 0:
         return ("probably losing, but not proven yet",

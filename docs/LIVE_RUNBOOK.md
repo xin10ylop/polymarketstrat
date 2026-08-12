@@ -3225,3 +3225,50 @@ them in that order.
   is wrong with it; it is simply the newest and strictest.
 
   eth 15m slippage has TWO matched entries. Not a number.
+
+- 2026-08-13 "TRADES" WERE FILL ROWS, NOT DECISIONS — every win-rate interval
+  printed so far was too narrow. Found because eth 5m's verdict flipped:
+  08-12 evening the report said "LOSING, and that is real — not bad luck /
+  more time will not rescue this one" (35/85, CI [31.3, 51.8] vs 55.4%
+  break-even); by the next morning it read 44/94 and "not proven". Nine
+  winning ROWS in a row looked like a 1-in-900 streak, which prompted a
+  check of what a row actually is.
+
+  THE UNIT WAS WRONG. executor.take() sweeps every ask level up to the limit
+  and writes ONE FILL ROW PER LEVEL — ledger.py has documented this since
+  audit F4 ("on thin books 5-7 rows per take"), and the snipe trailing
+  breaker already aggregates per-take because of it. pnl_daily and plain did
+  not: they counted rows. Measured ratios: btc 130 rows over 73 decisions
+  (1.8x), eth 69 rows over 19 decisions (3.6x — thin books sweep more
+  levels, so eth inflates most). Every row of one window settles together,
+  so rows are perfectly correlated and n was inflated by those factors,
+  narrowing every interval by up to ~2x. Worse, the weighting is biased:
+  thin-book windows (the high-slippage ones) write the most rows and so
+  counted the most.
+
+  CONSEQUENCES, stated so nothing downstream trips on them:
+    - eth's "proven losing" of 08-12 is RETRACTED as an artifact: on ~24
+      decisions it was never provable either way. It remains probably
+      losing (point estimate far below its bar).
+    - every "N trades" and every verdict date printed before this entry was
+      computed on rows; expect counts to DROP (btc ~half, eth ~quarter) and
+      dates to recede in the next report. That is the numbers becoming
+      honest, not the bots slowing down.
+    - entry_ceiling's tables are also per-row. Its verdict was "change
+      nothing", which stands (widening intervals cannot flip a null), but
+      re-cut it per decision before ever acting on it.
+    - lean_test and slippage were always per-window/per-entry and are
+      unaffected.
+
+  FIX: pnl_dailyureand plain aggregate fills to the WINDOW before counting
+  anything (sum pnl, size-weighted entry, one win/lose per window).
+  Smoke-tested: one winning decision written as 3 rows plus one losing
+  single-row decision reports 2 trades at 50%, not 4 at 75%. Verdict wording
+  also tempered — "more time will not rescue this one" promised more than a
+  95% test can deliver, and a verdict now asks to survive a few days before
+  being treated as settled.
+
+  SIXTH INSTANCE OF THE SAME DEFECT FAMILY: a statistic computed at the
+  wrong granularity (rate-averaged gaps, day-end drawdown, day-end peak,
+  clip extrapolation, verdict-at-boundary, and now rows-as-trades). The
+  codebase even carried the warning; the new tools just did not read it.
