@@ -25,9 +25,9 @@ p + 0.07*p*(1-p):
     entry 0.52 -> 53.75%      entry 0.56 -> 57.73%
 
 PREOPEN_MAX_PX is 0.56 on every unit. A fill at the ceiling needs 57.73% to
-break even, which is ABOVE the best settle rate this strategy has ever
-measured (60.4% at the gate, and that was the whole-sample figure, not the
-marginal one). The ceiling is admitting trades that cannot pay.
+break even — above the ~57% the archive currently measures on gated windows
+(the once-quoted 60.4% was an early small-sample figure). The ceiling is
+admitting trades that, at the margin, cannot pay.
 
 WHY THIS IS A LEGITIMATE BACKTEST AND NOT CURVE-FITTING. The entry price is
 observable BEFORE the trade — the bot already reads best_ask and compares it

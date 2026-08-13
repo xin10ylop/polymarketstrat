@@ -17,6 +17,16 @@ class RiskManager:
         self._halts = {}
         self._started = time.time()
         self._shadow_day = None      # UTC day whose shadow stop is recorded
+        # RE-DERIVE HALTS BEFORE ANYONE CAN TRADE (audit 2026-08-13). run()
+        # sleeps 30s before its first _check, so a restarted bot traded for
+        # ~30-35s before a mismatch or daily-loss halt re-armed — every crash
+        # loop reopened the window. All _check inputs are ledger reads, so
+        # doing it synchronously here costs milliseconds.
+        try:
+            self._check()
+        except Exception:  # noqa: BLE001
+            log.exception("startup risk check failed (continuing; the "
+                          "5s loop will retry)")
 
     def halt(self, scope, reason, until=None):
         """until=None -> sticky (human restart required); otherwise the halt
@@ -106,6 +116,20 @@ class RiskManager:
                 and (self.ledger.snipe_fills_since_trailing_halt()
                      >= self.cfg.snipe_trailing_rearm_fills)):
             self.halt("snipe", f"trailing {n}-fill pnl {tp:.2f} < {trail_floor:.2f}")
+        if self.cfg.mode == "live":
+            # LIVE STICKY HALTS MUST SURVIVE A RESTART (audit 2026-08-13).
+            # Ambiguous fills, unexpected order errors and reconciler
+            # breaches halted only in memory: systemd Restart= could lift a
+            # halt whose own text says "reconcile before restarting". The
+            # triggering events persist in the ledger; a human acknowledges
+            # them with scripts/ack_incident.py after reconciling against
+            # the exchange, and only that ack releases the halt.
+            pending = self.ledger.needs_ack()
+            if pending is not None:
+                self.halt("all", "unacknowledged live incident on the ledger "
+                          f"(event at {time.strftime('%m-%d %H:%M', time.gmtime(pending))} UTC) "
+                          "— reconcile against the exchange, then run "
+                          "scripts/ack_incident.py")
         if self.ledger.mismatches() > 0:
             # scope "all": a mismatch means our oracle read disagrees with the
             # exchange — EVERY strategy must stop, not just the toll (which is

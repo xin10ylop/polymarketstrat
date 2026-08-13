@@ -16,6 +16,10 @@ Environment=SPOT_FEED=coinbase
 Environment=COIN=sol
 Environment=TOLL_ENABLED=0
 # sparse tape + no settled-fill record of its own: tighter bar-age cap than
+# the 5.0 default (two audits, 07-31) — this line was MISSING and the comment
+# truncated until the 2026-08-13 deploy audit caught it; a redeploy would
+# have run SOL at the loose default
+Environment=SPOT_MAX_BAR_AGE_S=3.0
 Environment=MAX_DAILY_LOSS=250
 Environment=BOT_DATA_DIR=/opt/polymarketstrat/bot/data/snipe-sol
 Environment=LOG_LEVEL=INFO

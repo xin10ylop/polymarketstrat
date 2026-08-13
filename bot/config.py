@@ -147,8 +147,9 @@ class Config:
     # 0.50, so anything above this means the makers priced the tilt first
     preopen_max_px: float = _env("PREOPEN_MAX_PX", 0.56, float)
     preopen_clip: int = _env("PREOPEN_CLIP", 250, int)
-    preopen_exit_c: float = _env("PREOPEN_EXIT_C", 0.05, float)
-    preopen_mark_s: float = _env("PREOPEN_MARK_S", 15.0, float)
+    # (preopen_exit_c / preopen_mark_s deleted 2026-08-13: read nowhere —
+    # the strategy uses preopen_track_s / preopen_track_levels. Dead knobs
+    # invite tuning that does nothing.)
     # The strike's own coverage floor, SEPARATE from oracle_twap_min_coverage
     # because that one gates settlement and the snipe and must not move.
     # 0.9 was a guess and it refused 23.1% of btc windows (24.9% eth). Punching
@@ -172,6 +173,14 @@ class Config:
     # floor, which is the time an order still needs to reach the book before
     # the open.
     preopen_min_lead_s: float = _env("PREOPEN_MIN_LEAD_S", 0.5, float)
+    # PAPER-ONLY REALISM DELAY (audit 2026-08-13). A real FAK decided at
+    # T-lead reaches the book ~latency later; paper used to fill at the
+    # decision instant, an optimism measured at +0.49-0.84c/share of pure
+    # snapshot-to-fire drift (bot/slippage.py) — 15-25% of the edge. The
+    # entry now sleeps this long before sweeping the then-current book.
+    # Same principle as SNIPE_TAKE_RECHECK_S, and ignored in live mode,
+    # where the latency is real and adding more would be self-harm.
+    preopen_take_recheck_s: float = _env("PREOPEN_TAKE_RECHECK_S", 0.5, float)
     preopen_track_s: float = _env("PREOPEN_TRACK_S", 90.0, float)
     preopen_track_levels: tuple = tuple(
         float(x) for x in _env(
@@ -324,9 +333,9 @@ class Config:
     live_max_trades_day: int = _env("LIVE_MAX_TRADES_DAY", 40, int)
     pm_signature_type: int = _env("PM_SIGNATURE_TYPE", 1, int)  # 1=email/Magic, 2=browser proxy
     pm_private_key: str = _env("PM_PRIVATE_KEY", "")
-    pm_api_key: str = _env("PM_API_KEY", "")
-    pm_api_secret: str = _env("PM_API_SECRET", "")
-    pm_api_passphrase: str = _env("PM_API_PASSPHRASE", "")
+    # (pm_api_key/secret/passphrase deleted 2026-08-13: never read — live.py
+    # derives API creds from the private key. A dead credential knob is worse
+    # than dead config; someone will one day "rotate" it and believe they did.)
     pm_funder: str = _env("PM_FUNDER", "")
 
 

@@ -24,6 +24,7 @@ CREATE TABLE IF NOT EXISTS settlements(
   wts INTEGER PRIMARY KEY, winner TEXT, oracle_winner TEXT, mismatch INTEGER,
   settle_ts REAL);
 CREATE TABLE IF NOT EXISTS events(ts REAL, kind TEXT, detail TEXT);
+CREATE INDEX IF NOT EXISTS ix_events_kind ON events(kind, ts);
 CREATE INDEX IF NOT EXISTS ix_fills_ts ON fills(ts);
 CREATE INDEX IF NOT EXISTS ix_fills_wts ON fills(wts);
 CREATE INDEX IF NOT EXISTS ix_fills_strat_ts ON fills(strategy, ts);
@@ -117,10 +118,50 @@ class Ledger:
 
     # ---- queries ----
     def realized_pnl_today(self):
+        """Today's P&L attributed by SETTLEMENT day, not fill day.
+
+        The old fill-ts filter had a blind spot (audit 2026-08-13): pnl is
+        WRITTEN at settlement, so a 23:58 fill settling 00:06 landed in
+        yesterday's bucket — a bucket whose breaker never runs again. A -$300
+        boundary loss produced no halt and no shadow event at all. Joining
+        through settlements.settle_ts puts every loss in the day the money
+        actually moved; fills whose window has no settlement row yet fall
+        back to fill ts (they also have pnl NULL, so they contribute 0).
+        """
         day0 = time.time() - time.time() % 86400
-        row = self.db.execute("SELECT COALESCE(SUM(pnl),0) FROM fills WHERE ts>=?",
-                              (day0,)).fetchone()
+        row = self.db.execute(
+            "SELECT COALESCE(SUM(f.pnl),0) FROM fills f "
+            "LEFT JOIN settlements s ON f.wts = s.wts "
+            "WHERE COALESCE(s.settle_ts, f.ts) >= ?", (day0,)).fetchone()
         return row[0]
+
+    def has_fill(self, wts, strategy):
+        """Does any fill exist for this window+strategy? The persistent memory
+        behind the strategies' in-memory `done` sets: a crash + fast restart
+        forgets `done` but not the ledger, and re-entering a filled window
+        doubles a real position (audit 2026-08-13)."""
+        return self.db.execute(
+            "SELECT 1 FROM fills WHERE wts=? AND strategy=? LIMIT 1",
+            (wts, strategy)).fetchone() is not None
+
+    def needs_ack(self):
+        """The newest live incident not yet acknowledged by a human, or None.
+
+        Live sticky halts (ambiguous POST, unexpected order error, reconciler
+        breach) lived only in RiskManager memory: a restart cleared them and
+        NOTHING re-derived them — 'sticky' halts that systemd Restart= could
+        silently lift (audit 2026-08-13). These event kinds persist in the
+        ledger; scripts/ack_incident.py writes the 'ack' row after a human
+        has reconciled against the exchange."""
+        row = self.db.execute(
+            "SELECT MAX(ts) FROM events WHERE kind IN "
+            "('live_unconfirmed','live_error','reconciler_breach')").fetchone()
+        if row[0] is None:
+            return None
+        ack = self.db.execute(
+            "SELECT COALESCE(MAX(ts),0) FROM events WHERE kind='ack'"
+        ).fetchone()[0]
+        return row[0] if row[0] > ack else None
 
     def snipe_trailing_pnl(self, n):
         # per-TAKE aggregation (audit F4: one sweep writes a row per price

@@ -159,14 +159,21 @@ def main():
     # unknown. That is measurement, not a fill model.
     deep = [r for r in rows if r[4] >= CLIP]
     drift = st.mean(r[3] for r in deep) / 100.0 if len(deep) >= 5 else 0.0
+    # PER DECISION AND ON THE MATCHED POPULATION ONLY (audit 2026-08-13).
+    # The first version counted fill ROWS over the whole ledger lifetime:
+    # wrong unit (thin-book windows write 1.8-3.6x more rows and are exactly
+    # the high-slippage windows), wrong population (all fills vs the matched
+    # subset the modelled prices come from) — and it was the input that
+    # decided "clip stays at 250".
     wins = None
     ldb = sqlite3.connect(f"file:{lp}?mode=ro", uri=True)
     try:
-        wr_row = ldb.execute(
-            "SELECT COUNT(*), SUM(CASE WHEN pnl>0 THEN 1 ELSE 0 END) "
-            "FROM fills WHERE pnl IS NOT NULL").fetchone()
-        if wr_row and wr_row[0]:
-            wins = wr_row[1] / wr_row[0]
+        matched = {r[0] for r in rows}
+        per = [(w, p) for w, p in ldb.execute(
+            "SELECT wts, SUM(pnl) FROM fills WHERE pnl IS NOT NULL "
+            "GROUP BY wts") if w in matched]
+        if per:
+            wins = sum(1 for _, p in per if p > 0) / len(per)
     except sqlite3.Error:
         pass
     if wins is None:

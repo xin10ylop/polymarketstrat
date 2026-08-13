@@ -11,6 +11,10 @@ WorkingDirectory=/opt/polymarketstrat
 Environment=BOT_MODE=paper
 Environment=SPOT_FEED=coinbase
 Environment=SNIPE_ENABLED=0
+# EXPLICIT, not default-reliant (audit 2026-08-13): every other unit must
+# remember TOLL_ENABLED=0 because the config default is 1; stating it here
+# is the first step toward flipping that default to 0 safely
+Environment=TOLL_ENABLED=1
 Environment=BOT_DATA_DIR=/opt/polymarketstrat/bot/data/toll
 Environment=LOG_LEVEL=INFO
 # Tier-2 queue-priority: pre-bid ~1.2s before close on clearly-decided windows,

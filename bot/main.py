@@ -45,7 +45,13 @@ async def reconciler(cfg, clob, ledger, toll, oracle):
                     done.add(wts)   # out of patience; leave fills unmarked
                     ledger.event("no_outcome", mk.slug)
                 continue
-            oracle_winner = toll.oracle_calls.get(wts)
+            # THE TOLL'S OPINION IS THE OLD RULE (audit 2026-08-13): it calls
+            # winners from exact boundary SPOT samples, pre-TWAP, and taking
+            # it here bypassed both the correct rule and the tie band — a
+            # 0.05bp photo finish could halt the whole fleet on a wrong-rule
+            # call. On the TWAP families the toll's view is inadmissible.
+            oracle_winner = (None if cfg.oracle_twap_s
+                             else toll.oracle_calls.get(wts))
             if oracle_winner is None and cfg.oracle_twap_s:
                 # venue rule since 2026-08-07: rolling TWAP at BOTH ends.
                 # twap_winner already returns None on thin coverage or when
@@ -54,6 +60,12 @@ async def reconciler(cfg, clob, ledger, toll, oracle):
                 C = wts + cfg.window_secs
                 oracle_winner = oracle.twap_winner(
                     wts, C, n, cfg.oracle_twap_min_coverage)
+                if oracle_winner is None:
+                    # a silent no-opinion and a suppressed near-tie were
+                    # indistinguishable; the tripwire's blind spots must be
+                    # countable (audit 2026-08-13)
+                    ledger.event("cross_check_skipped",
+                                 f"w{wts} thin coverage or edge disagreement")
                 t_open, _ = oracle.twap_at(wts, n)
                 t_close, _ = oracle.twap_at(C, n)
                 if (oracle_winner is not None and t_open and t_close
@@ -144,6 +156,25 @@ async def settlement_healer(cfg, ledger):
                 outcomes = _json.loads(outcomes) if isinstance(outcomes, str) else outcomes
                 toks = m.get("clobTokenIds")
                 toks = _json.loads(toks) if isinstance(toks, str) else toks
+                # WRONG-MARKET FIREWALL (audit 2026-08-13). Discovery refuses
+                # a slug whose endDate is not this window's close; the healer
+                # marked by token with NO such check, and a foreign market
+                # would settle every fill to 0.0. Same endDate rule here, plus
+                # gamma's tokens must intersect the tokens we actually hold in
+                # this window — a market we never traded cannot mark us.
+                from bot.feeds.clob import ClobFeed as _CF
+                end_ts = _CF._parse_end(m.get("endDate"))
+                if end_ts != wts + cfg.window_secs:
+                    log.warning("healer: %s endDate=%s != w%s close — wrong "
+                                "market, skipping", slug, end_ts, wts)
+                    continue
+                held = {t for (t,) in ledger.db.execute(
+                    "SELECT DISTINCT token FROM fills WHERE wts=?", (wts,))}
+                if held and not (held & set(toks)):
+                    log.warning("healer: gamma tokens for %s do not match the "
+                                "tokens filled in w%s — wrong market, skipping",
+                                slug, wts)
+                    continue
                 idx = [float(p) for p in prices].index(1.0)
                 winner = outcomes[idx].lower()
                 n = ledger.mark_window_by_token(wts, toks[idx], winner)
@@ -222,6 +253,18 @@ async def amain():
     if CFG.slug_style == "et_hourly" and CFG.window_secs != 3600:
         raise SystemExit("CONFIG ERROR: SLUG_STYLE=et_hourly requires WINDOW_SECS=3600 "
                          "(endDate coincidences would bind wrong markets)")
+    # FAMILY drives the TWAP length and the tie band while WINDOW_SECS and
+    # SLUG_PREFIX are independent envs (audit 2026-08-13): a unit with
+    # WINDOW_SECS=900 + a 15m slug but FAMILY unset would discover the right
+    # markets, compute the strike on a 30s TWAP, and audit settlement with
+    # the 5m band — wrong strike, wrong tripwire, found only via halts.
+    _want = {"5m": 300, "15m": 900, "1h": 3600}.get(CFG.family)
+    if _want is not None and CFG.window_secs != _want:
+        raise SystemExit(f"CONFIG ERROR: FAMILY={CFG.family} requires "
+                         f"WINDOW_SECS={_want}, got {CFG.window_secs}")
+    if CFG.family in ("5m", "15m") and f"-{CFG.family}" not in CFG.slug_prefix:
+        raise SystemExit(f"CONFIG ERROR: FAMILY={CFG.family} but SLUG_PREFIX="
+                         f"'{CFG.slug_prefix}' does not name that family")
     if CFG.mode == "live" and ledger.db.execute(
             "SELECT COUNT(*) FROM orders WHERE mode LIKE 'paper%'").fetchone()[0]:
         raise SystemExit("CONFIG ERROR: live mode on a ledger containing paper fills "

@@ -43,7 +43,14 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from bot.config import CFG                                    # noqa: E402
 
-BAND = float(os.environ.get("BAND_BP", CFG.oracle_tie_bps))
+# THE BAND IS PER FAMILY, NOT PER SHELL (audit 2026-08-13). One BAND from
+# the calling shell's FAMILY (default 5m -> 0.6) was applied to a list that
+# MIXES 5m and 15m ledgers: a 15m row decided by 0.45bp — outside the 15m
+# band of 0.3 — "would clear" unless the operator remembered FAMILY=15m.
+# The band now travels with each ledger; BAND_BP overrides ALL of them and
+# exists for tests only.
+_OVERRIDE = os.environ.get("BAND_BP")
+_FAM_BAND = {300: 0.6, 900: 0.3}
 LEDGERS = [
     ("preopen-btc", "bot/data/preopen-btc", "btc", 300, 30),
     ("preopen-eth", "bot/data/preopen-eth", "eth", 300, 30),
@@ -73,9 +80,12 @@ def main(apply_it):
     root = os.environ.get(
         "REPO_ROOT", os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     print(f"{'APPLYING' if apply_it else 'DRY RUN'} — acknowledging mismatches "
-          f"inside the measured residual band of {BAND}bp\n")
+          f"inside each family's measured residual band "
+          f"(5m: {_FAM_BAND[300]}bp, 15m: {_FAM_BAND[900]}bp"
+          f"{', OVERRIDDEN to ' + _OVERRIDE + 'bp' if _OVERRIDE else ''})\n")
     grids, cleared, refused = {}, 0, []
     for name, rel, coin, window, n in LEDGERS:
+        BAND = float(_OVERRIDE) if _OVERRIDE else _FAM_BAND[window]
         path = os.path.join(root, rel, "paper.db")
         if not os.path.exists(path):
             continue

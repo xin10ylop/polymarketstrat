@@ -85,6 +85,11 @@ class FakeLedger:
     def unmarked_old_fills(self):
         return 0
 
+    def needs_ack(self):
+        # live incident re-arm (audit 2026-08-13): the fake defaults to no
+        # pending incident; the incident-halt path has its own tests below
+        return None
+
     def kinds(self):
         return [k for k, _ in self.events]
 
@@ -166,6 +171,18 @@ rmb, ledb = rm(pnl=-308.68, mismatches=1)
 rmb._check()
 check_true("a mismatch on a losing day still halts",
            rmb.halted("preopen"))
+
+print("\nan unacknowledged live incident halts live and only live")
+rli, ledli = rm(mode="live", pnl=0.0)
+rli.needs = 123.0
+rli.ledger.needs_ack = lambda: 1786500000.0
+rli._check()
+check_true("live halts on an unacked incident", rli.halted("preopen"))
+check_true("and it is sticky", rli._halts["all"][1] is None)
+rlp, _ = rm(mode="paper", pnl=0.0)
+rlp.ledger.needs_ack = lambda: 1786500000.0
+rlp._check()
+check_true("paper ignores live incident events", not rlp.halted("preopen"))
 
 print("\na profitable day does nothing at all")
 rg, ledg = rm(pnl=+500.0)

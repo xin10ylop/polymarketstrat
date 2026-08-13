@@ -28,6 +28,11 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # 2026-08-07 00:00 UTC — the first window minted under the TWAP rule
 CUTOVER = 1786060800
+# 2026-08-09 00:00 UTC — the oracle migration was verified by then (100% on
+# 76 windows). An OPEN-ENDED predicate would clear any GENUINE mismatch that
+# arises after the migration too, forever, on every re-run (audit
+# 2026-08-13). Rows past this bound are a new problem, not explained history.
+VERIFIED_BY = 1786233600
 REASON = ("venue resolution-rule change 2026-08-07 (spot -> rolling Chainlink "
           "TWAP); oracle migrated and re-verified")
 
@@ -59,18 +64,22 @@ def main(apply_it):
             print(f"{name}: clean")
             continue
         old = [r for r in rows if r[0] < CUTOVER]
-        new = [r for r in rows if r[0] >= CUTOVER]
-        print(f"{name}: {len(rows)} mismatch rows "
-              f"({len(new)} post-cutover, {len(old)} PRE-cutover)")
+        new = [r for r in rows if CUTOVER <= r[0] < VERIFIED_BY]
+        late = [r for r in rows if r[0] >= VERIFIED_BY]
+        print(f"{name}: {len(rows)} mismatch rows ({len(new)} in the "
+              f"rule-change window, {len(old)} PRE-cutover, "
+              f"{len(late)} POST-verification)")
         for wts, w, ow in rows:
-            era = "rule-change" if wts >= CUTOVER else "PRE-CUTOVER — NOT TOUCHED"
+            era = ("rule-change" if CUTOVER <= wts < VERIFIED_BY else
+                   "PRE-CUTOVER — NOT TOUCHED" if wts < CUTOVER else
+                   "POST-VERIFICATION — NOT TOUCHED (a NEW problem)")
             print(f"   w{wts} {time.strftime('%m-%d %H:%M', time.gmtime(wts))} "
                   f"official={w} oracle={ow}   [{era}]")
-        blocked += len(old)
+        blocked += len(old) + len(late)
         total += len(new)
         if apply_it and new:
-            db.execute("UPDATE settlements SET mismatch=0 WHERE mismatch=1 AND wts>=?",
-                       (CUTOVER,))
+            db.execute("UPDATE settlements SET mismatch=0 WHERE mismatch=1 AND wts>=? AND wts<?",
+                       (CUTOVER, VERIFIED_BY))
             db.execute("INSERT INTO events VALUES(?,?,?)",
                        (time.time(), "mismatch_cleared",
                         f"{len(new)} windows >= {CUTOVER}: {REASON}"))

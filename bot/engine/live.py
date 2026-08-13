@@ -12,7 +12,9 @@ Money rules enforced HERE, not in strategies:
   - per-trade cost <= bankroll * live_per_trade_frac (default 10%), computed
     at the LIMIT price — a FAK sweeps to the limit, so sizing off best_ask
     could overspend the cap by multiples (audit 2026-07-30 finding #3)
-  - one in-flight position at a time; max trades/day cap (persisted: restart
+  - one in-flight ORDER at a time (a real threading.Lock around the POST; it
+    does NOT limit held inventory — preopen holds to settlement and several
+    unredeemed positions can coexist); max trades/day cap (persisted: restart
     does not reset the day's count)
   - only strategies named in LIVE_STRATEGIES may trade (default: snipe)
   - every fill records the REAL matched size/price from the exchange response;
@@ -26,6 +28,7 @@ unexplained shortfall (audit finding #1).
 import asyncio
 import itertools
 import logging
+import threading
 import time
 
 from bot.engine.executor import Order
@@ -81,7 +84,11 @@ class LiveExecutor:
             funder=cfg.pm_funder or None)
         self.client.set_api_creds(self.client.create_or_derive_api_key())
         self.open_orders = {}
-        self._in_flight = False
+        # a REAL lock, not a check-then-set flag (audit 2026-08-13): snipe's
+        # take runs in one worker thread and preopen's in another; both could
+        # pass a boolean check in the T-6..T-1.5 overlap and post two
+        # concurrent orders
+        self._order_lock = threading.Lock()
         self.last_balance = None
         self._warmed = set()
         self._day = self._utc_day()
@@ -90,6 +97,13 @@ class LiveExecutor:
         day0 = time.time() - time.time() % 86400
         self._trades_today = self.ledger.db.execute(
             "SELECT COUNT(*) FROM fills WHERE ts >= ?", (day0,)).fetchone()[0]
+        # live order ids RESUME from the ledger (audit 2026-08-13): a fresh
+        # count(1_000_000) re-issued prior ids after every restart, and
+        # record_order's INSERT OR REPLACE then clobbered the old rows —
+        # order history destroyed and the trailing breaker's per-take
+        # aggregation merging different real orders.
+        global _ids
+        _ids = itertools.count(max(1_000_000, self.ledger.max_order_id() + 1))
         self.start_balance = self.fetch_balance()
         if self.start_balance < 0:
             raise RuntimeError("cannot read exchange balance at startup — fix "
@@ -147,15 +161,24 @@ class LiveExecutor:
         self._day_roll()
         if strategy not in self.cfg.live_strategies:
             return None
-        if self._in_flight:
+        # non-blocking: the loser SKIPS rather than queues — a queued order
+        # would fire seconds stale into a book that has moved
+        if not self._order_lock.acquire(blocking=False):
             return None
+        try:
+            return self._take_locked(wts, strategy, token, price_limit, size)
+        finally:
+            self._order_lock.release()
+
+    def _take_locked(self, wts, strategy, token, price_limit, size):
         if self._trades_today >= self.cfg.live_max_trades_day:
             log.warning("live: daily trade cap reached")
             return None
         st = self.clob.state(token)
         if (st is None or not st.book_fresh(self.cfg.book_max_age_s)
                 or st.best_ask is None or st.best_ask > price_limit
-                or st.best_ask < self.cfg.snipe_price_floor
+                or (strategy == "snipe"
+                    and st.best_ask < self.cfg.snipe_price_floor)
                 or st.best_ask_size <= 0):
             return None
         # low-collateral guard (audit M3): learn it from the reconciler's
@@ -183,7 +206,6 @@ class LiveExecutor:
                           f"w{wts} trigger_ask={st.best_ask:.3f}x{st.best_ask_size:.0f} "
                           f"req={fill_sz} limit={price_limit} ladder={levels[:6]}")
 
-        self._in_flight = True
         try:
             from py_clob_client_v2.clob_types import OrderArgs, OrderType
             from py_clob_client_v2.order_builder.constants import BUY
@@ -305,7 +327,7 @@ class LiveExecutor:
             log.exception("live take failed (halted): %s", e)
             return None
         finally:
-            self._in_flight = False
+            pass    # the order lock is released by take()
 
     @staticmethod
     def _parse_fill(resp, fallback_px):
@@ -321,7 +343,11 @@ class LiveExecutor:
         (matched/delayed/tradeIDs present but amounts unparseable) — the caller
         MUST treat that as a real position, never as a miss."""
         if not isinstance(resp, dict):
-            return 0.0, fallback_px
+            # an abnormal body from a POST that did not raise: money MAY have
+            # moved. Treating it as a clean miss left a real position
+            # untracked until the hourly reconciler's SECOND breach (~2h);
+            # ambiguous books worst-case and halts instead (audit 2026-08-13).
+            return -1.0, fallback_px
         try:
             shares = float(resp.get("takingAmount") or 0) / 1e6
             usdc = float(resp.get("makingAmount") or 0) / 1e6

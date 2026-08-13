@@ -10,14 +10,15 @@ MEASURED, and this is the whole case:
   - sign of the tilt at T-3 vs the true tilt at T+0: 98.9% btc / 97.4% eth
     agreement on windows over 1bp (6,047 windows per coin). At T-10 that
     falls to 83%/80%, so THREE SECONDS is the lead, not ten.
-  - the pre-open book is flat and symmetric, ~0.50 a side, and DEEP:
-    1,889 shares within 5c on one side and 3,310 on the other at T-3, with
-    depth essentially unchanged from T-30 to T-1. Makers do not pull.
-  - two seconds after the open the tilt side is quoted 0.563, and by T+15
-    it has gone as far as 0.70. The book reprices AFTER the open, using
-    information that already existed before it.
-  - so: 60.4% of these windows settle the tilt side, bought at ~0.505.
-    That is +8.12c/share held to settlement, 95% lower bound +5.68c.
+  - two seconds after the open the tilt side is quoted higher; the book
+    reprices AFTER the open, using information that existed before it.
+  - CURRENT NUMBERS LIVE IN THE INSTRUMENTS, NOT HERE (audit 2026-08-13:
+    this docstring once said "flat book ~0.50 a side, 60.4% settle,
+    +8.12c/share, floor +5.68c" — early small-sample figures at an entry
+    nobody pays; the archive now reads ~57% at ask ~0.521 and real fills
+    pay ~0.525). bot/launch_ev.py is the number a launch decision reads;
+    bot/lean_test.py and bot/slippage.py are the instruments behind it. A
+    docstring number ages the moment it is written; these tools do not.
 
 WHY BUY-AND-HOLD RATHER THAN THE +5c EXIT. The proposal rests a limit sell
 at entry+5c and the snap does clear it. But holding is worth MORE (+8.1c
@@ -84,7 +85,17 @@ class PreopenStrategy:
         """
         if now < nxt - self.cfg.preopen_lead_s:
             return ("wait", None)
-        if now > nxt - self.cfg.preopen_min_lead_s:
+        floor = self.cfg.preopen_min_lead_s
+        if self.cfg.mode == "live":
+            # THE 0.5s FLOOR IS A PAPER FLOOR (runbook 2026-08-11): it assumes
+            # an instant fill. A live FAK adds POST latency plus the venue's
+            # marketable hold, so an order fired at T-0.5 can land AFTER the
+            # open, sweeping the repriced ladder up to the ceiling. 1.0s is
+            # the conservative live floor until shadow-phase journals measure
+            # the real round trip; it may only ever be TIGHTENED from that
+            # measurement, never loosened by hand.
+            floor = max(floor, 1.0)
+        if now > nxt - floor:
             return ("too_late", None)
         return ("fire", nxt - now)
 
@@ -103,23 +114,33 @@ class PreopenStrategy:
                 f"tgt={self.cfg.preopen_lead_s:g} n={len(ls)}")
 
     def _roll(self, now, nxt, T):
-        """Per-window bookkeeping. Returns the window that rolled past
-        unaccounted-for, or None.
+        """Per-window bookkeeping. Returns the LIST of windows that rolled
+        past unaccounted-for (empty when none).
 
         THE BACKSTOP. `done` means "accounted for" — entered, refused, or
         declined, every one of them counted and logged. So a window that
         rolls past WITHOUT entering it was never reached at all, and that is
-        the one failure the counters cannot otherwise show. It is not
-        hypothetical: a stall spanning the whole approach AND the open leaves
-        `nxt` already advanced by the time the loop breathes, so even the
-        too_late branch never sees it. This is the last silent path.
+        the one failure the counters cannot otherwise show.
+
+        Two audit fixes (2026-08-13): a stall spanning k windows used to
+        report only the last-targeted one, undercounting the very metric this
+        exists to close; and a BACKWARD clock step used to mark the still-
+        future `last_nxt` as missed, poisoning `done` so the window was then
+        skipped silently when its time genuinely came.
         """
-        if nxt == self.last_nxt:
-            return None
-        missed = None
-        if self.last_nxt is not None and self.last_nxt not in self.done:
-            missed = self.last_nxt
-            self.done.add(missed)
+        if self.last_nxt is None or nxt == self.last_nxt:
+            self.last_nxt = nxt
+            return []
+        if nxt < self.last_nxt:
+            # the clock stepped backward: re-target quietly. Inventing a
+            # "missed" for a window still in the future would pre-poison
+            # `done` and silently skip it at its real approach.
+            self.last_nxt = nxt
+            return []
+        missed = [w for w in range(self.last_nxt, nxt, T)
+                  if w not in self.done]
+        for w in missed:
+            self.done.add(w)
         # pruned HERE, once per window, rather than on the entry path: a bot
         # halted all day never reaches the entry path, and would grow `done`
         # without bound on exactly the days it is already unhappy
@@ -188,9 +209,8 @@ class PreopenStrategy:
             if not self.cfg.preopen_enabled:
                 await asyncio.sleep(0.2)
                 continue
-            missed = self._roll(now, nxt, T)
-            if missed is not None:
-                self._skip("missed", missed,
+            for w in self._roll(now, nxt, T):
+                self._skip("missed", w,
                            "the loop never reached this window's firing range")
             if nxt in self.done:
                 await asyncio.sleep(0.2)
@@ -225,12 +245,12 @@ class PreopenStrategy:
             # recorded quantity, so the spread across live fills answers the
             # lead question with real entries instead of book snapshots.
             try:
-                self._enter(nxt, actual)
+                await self._enter(nxt, actual)
             except Exception as e:  # noqa: BLE001
                 log.warning("w%s preopen error: %s", nxt, e)
 
     # ------------------------------------------------------------------
-    def _enter(self, wts, lead=None):
+    async def _enter(self, wts, lead=None):
         """lead is the ACTUAL seconds-to-open at this instant, not the
         configured target — a loop that woke late holds more of the strike
         and should use it."""
@@ -240,6 +260,23 @@ class PreopenStrategy:
         self.leads.append(round(lead, 2))
         if len(self.leads) > LEAD_KEEP:
             del self.leads[:-LEAD_KEEP]
+        # THE CLOCK IS THE WHOLE TIMING MODEL (audit 2026-08-13). The snipe
+        # refuses on an unfit oracle; preopen fired without checking either.
+        # A local clock slow by d seconds fires at true T-3+d while computing
+        # and RECORDING a healthy lead of 3.0 — for d > 2.5 the order lands
+        # after the open against the repriced book, and nothing in the
+        # telemetry would say so.
+        if self.oracle.degraded or not self.oracle.clock_ok():
+            return self._skip("oracle_unfit", wts,
+                              f"degraded={self.oracle.degraded} "
+                              f"clock_ok={self.oracle.clock_ok()}")
+        # A RESTART FORGETS `done`, THE LEDGER DOES NOT. A crash + fast
+        # restart landing inside the same window's firing band would enter it
+        # a second time — duplicate paper fills now, a doubled real position
+        # later. The ledger is the persistent memory `done` is not.
+        if self.ledger.has_fill(wts, "preopen"):
+            return self._skip("already_entered", wts,
+                              "a previous process already filled this window")
         t = self._tilt(wts, lead)
         if t is None:
             return self._skip("no_grid", wts)
@@ -264,8 +301,32 @@ class PreopenStrategy:
             return self._skip("book_leans", wts,
                               f"{side} ask {st.best_ask:.3f} > "
                               f"{self.cfg.preopen_max_px:.2f}, tilt {tilt:+.2f}bp")
-        order = self.exec.take(wts, "preopen", token, self.cfg.preopen_max_px,
-                               self.cfg.preopen_clip)
+        if self.cfg.mode == "live":
+            if "preopen" not in self.cfg.live_strategies:
+                # live take() would return None here and it would be logged as
+                # no_fill — a config omission disguised as a quiet market
+                return self._skip("not_live_enabled", wts,
+                                  "LIVE_STRATEGIES does not name preopen")
+            # exchange I/O off the event loop: a blocking POST in here (plus
+            # its retry sleep) would blind every feed during the most
+            # latency-critical seconds — same rule as the snipe's live path
+            order = await asyncio.to_thread(
+                self.exec.take, wts, "preopen", token,
+                self.cfg.preopen_max_px, self.cfg.preopen_clip)
+        else:
+            # PAPER HONESTY (audit 2026-08-13): a real FAK decided now
+            # reaches the book ~latency later, and the measured cost of that
+            # gap is +0.49-0.84c/share even when depth is ample. Paper used
+            # to fill at the decision instant off a possibly 3s-old snapshot
+            # — the exact optimism the snipe's paper-only recheck exists to
+            # remove. Sleep the modeled latency, then sweep the THEN-current
+            # book; take() itself re-checks freshness and the ceiling,
+            # exactly as a late-arriving FAK's limit would.
+            if self.cfg.preopen_take_recheck_s > 0:
+                await asyncio.sleep(self.cfg.preopen_take_recheck_s)
+            order = self.exec.take(wts, "preopen", token,
+                                   self.cfg.preopen_max_px,
+                                   self.cfg.preopen_clip)
         if not order or not order.filled:
             return self._skip("no_fill", wts, f"{side} ask {st.best_ask:.3f}")
         self.entries += 1

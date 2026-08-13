@@ -309,20 +309,101 @@ print("\nno window leaves the loop unaccounted for")
 _T5 = 300
 _rp = PreopenStrategy(CFG, None, None, None, None, None, None)
 check_true("the very first pass invents no missed window",
-           _rp._roll(_T0 - 100, _T0, _T5) is None)
+           _rp._roll(_T0 - 100, _T0, _T5) == [])
 check_true("and repeated passes at the same window stay quiet",
-           _rp._roll(_T0 - 99, _T0, _T5) is None)
+           _rp._roll(_T0 - 99, _T0, _T5) == [])
 # the window was acted on, so rolling to the next one is silent
 _rp.done.add(_T0)
 check_true("a window that WAS accounted for is not reported missed",
-           _rp._roll(_T0 + 1, _T0 + _T5, _T5) is None)
+           _rp._roll(_T0 + 1, _T0 + _T5, _T5) == [])
 # now let one roll past untouched — the stall case
 _missed = _rp._roll(_T0 + _T5 + 1, _T0 + 2 * _T5, _T5)
-check("a window that rolled past untouched is named", _missed, _T0 + _T5)
+check_true("a window that rolled past untouched is named",
+           _missed == [_T0 + _T5], f"(got {_missed})")
 check_true("and is then marked accounted-for so it reports once, not forever",
            (_T0 + _T5) in _rp.done)
 check_true("re-rolling does not report it a second time",
-           _rp._roll(_T0 + 2 * _T5 + 1, _T0 + 3 * _T5, _T5) != _T0 + _T5)
+           _rp._roll(_T0 + 2 * _T5 + 1, _T0 + 3 * _T5, _T5) != [_T0 + _T5])
+# AUDIT 2026-08-13: a stall spanning SEVERAL windows must name every one —
+# the first version reported only the last-targeted window, undercounting
+# the exact metric _roll exists to close
+_mp = PreopenStrategy(CFG, None, None, None, None, None, None)
+_mp._roll(_T0 - 1, _T0, _T5)
+_multi = _mp._roll(_T0 + 3 * _T5 + 1, _T0 + 4 * _T5, _T5)
+# jumping from targeting T0 to targeting T0+4W means FOUR windows (T0..T0+3W)
+# opened unobserved — the first version of this test expected three and the
+# CODE was right: every boundary in [last_nxt, nxt) that is not accounted
+# for is a genuinely missed window
+check_true("a stall spanning four windows reports all four",
+           _multi == [_T0, _T0 + _T5, _T0 + 2 * _T5, _T0 + 3 * _T5],
+           f"(got {_multi})")
+# AUDIT 2026-08-13: a BACKWARD clock step must not invent a missed window —
+# it used to mark the still-future last_nxt as done, silently skipping it
+# when its time genuinely came
+_bkp = PreopenStrategy(CFG, None, None, None, None, None, None)
+_bkp._roll(_T0 - 1, _T0, _T5)
+check_true("a backward clock step invents nothing",
+           _bkp._roll(_T0 - 400, _T0 - _T5, _T5) == [])
+check_true("and does not poison the future window", _T0 not in _bkp.done)
+
+print("\nlive mode raises the firing floor; paper keeps its own")
+from dataclasses import replace as _rep
+_lp2 = PreopenStrategy(_rep(CFG, mode="live"), None, None, None, None, None,
+                       None)
+check_true("T-0.6 is TOO LATE in live (floor 1.0s: POST latency is real)",
+           _lp2._when(_T0 - 0.6, _T0)[0] == "too_late")
+check_true("T-1.2 still fires in live",
+           _lp2._when(_T0 - 1.2, _T0)[0] == "fire")
+check_true("paper still fires at T-0.6 (its recheck models the latency)",
+           _dp._when(_T0 - 0.6, _T0)[0] == "fire")
+
+print("\n_enter refuses an unfit oracle and an already-filled window")
+import asyncio as _aio
+import sqlite3 as _sq3
+import time as _time
+
+
+class _FLedger:
+    def __init__(self):
+        self.db = _sq3.connect(":memory:")
+        self.db.execute("CREATE TABLE fills(order_id INTEGER, ts REAL, "
+                        "wts INTEGER, strategy TEXT, token TEXT, price REAL, "
+                        "size REAL, fee REAL, maker INTEGER, settle REAL, "
+                        "pnl REAL)")
+
+    def has_fill(self, wts, strategy):
+        return self.db.execute(
+            "SELECT 1 FROM fills WHERE wts=? AND strategy=?",
+            (wts, strategy)).fetchone() is not None
+
+    def event(self, *a):
+        pass
+
+
+_cfg0 = _rep(CFG, preopen_take_recheck_s=0.0)
+_o5 = Oracle(CFG)
+_o5.samples = {s: 100.0 for s in range(_T0 - CFG.oracle_twap_s - 5, _T0)}
+_o5.last_sample_s = max(_o5.samples)
+# no last_rx -> clock_ok False AND degraded True: the unfit case
+_s5 = PreopenStrategy(_cfg0, None, _o5, None, None, _FLedger(), None)
+_aio.run(_s5._enter(_T0, 3.0))
+check("an unfit oracle is refused and counted", _s5.why.get("oracle_unfit"), 1)
+# make the oracle fit: fresh receive, sane clock lag
+_o5.last_rx = _time.time()
+_o5.last_sample_s = _time.time() - 1.0
+_led6 = _FLedger()
+_led6.db.execute("INSERT INTO fills VALUES(1, 0, ?, 'preopen', 't', 0.52, "
+                 "100, 1.0, 0, NULL, NULL)", (_T0,))
+_s6 = PreopenStrategy(_cfg0, None, _o5, None, None, _led6, None)
+_aio.run(_s6._enter(_T0, 3.0))
+check("a window the ledger already holds is refused",
+      _s6.why.get("already_entered"), 1)
+# clean ledger + fit oracle: proceeds all the way to the (flat) tilt gate,
+# proving the new gates pass an honest entry through
+_s7 = PreopenStrategy(_cfg0, None, _o5, None, None, _FLedger(), None)
+_aio.run(_s7._enter(_T0, 3.0))
+check("a fit oracle and clean ledger reach the tilt gate",
+      _s7.why.get("flat_tilt"), 1)
 
 # A HALTED BOT MUST NOT LOOK LIKE A BROKEN ONE. Before this, risk.halted()
 # was a bare `continue`: no counter, no log. btc 5m sat halted on the daily
