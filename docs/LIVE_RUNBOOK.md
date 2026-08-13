@@ -3504,3 +3504,55 @@ them in that order.
   poison mismatch/pre-era/dust decisions excluded, days from kept
   decisions only, cap deltas exact, verdict firing at the shallowest
   losing tail).
+
+- 2026-08-13 SWEEP_CAP FIRST RUN — eth's sweep tail is a donation, btc's
+  pays, btc 15m loses at the very touch, and the ladder is a CENT grid.
+  Both eras were run (uncensored ERA=1786450800 and rule-era
+  ERA=1786060800); the depth comparison is robust to the old censoring,
+  and the two eras agree everywhere:
+
+  eth 5m — THE FINDING. Every share bought above the touch loses in BOTH
+  halves of BOTH eras: -1.78c/-5.92c per share (uncensored, 57 decisions
+  with tail rows) and -9.61c/-9.22c (rule era, 70 decisions). Touch-only
+  replay: +11.20c/share and +$206.42/day vs +$58.67/day as-swept
+  (uncensored); in the rule era the cap turns -$182.20/day into
+  +$122.72/day. The eth signal is GOOD (+11.20c at the touch) — the
+  sweep was eating it, which is consistent with slippage.py's earlier
+  "all-thin books, 2.35c slip, ~3.6 rows/decision" measurement.
+
+  btc 5m — the other coin does NOT agree, and genuinely so: its tail is
+  +3.51c/share overall (halves +15.78/-8.19, mixed) and +3.08 in the rule
+  era (+7.41/-0.56). Cutting btc's sweep would cost ~$260/day. btc's
+  books are thicker; this is a per-market execution property, already
+  measured as such by slippage.py. No cap on btc.
+
+  DECISION — NO paper config changes anywhere, on the shadow-stop
+  principle: the uncapped ledger CONTAINS every capped ledger (sweep_cap
+  replays any cap for free, and paper sweeping deeper levels does not
+  alter the touch rows' realism since paper has no market impact).
+  Capping the paper bot would censor the record permanently. The paper
+  fleet keeps full sweeps.
+
+  DECISION — the live design note: any future eth 5m live unit enters
+  TOUCH-ONLY. Recorded honestly: the pre-registered cross-coin clause is
+  NOT met (btc's tail pays), so this is not a config change to the
+  measurement fleet — it is a live-design proposal supported by both
+  halves x both eras x the independently measured thin-book mechanism,
+  to be re-confirmed by sweep_cap at eth launch time. Reading caveat
+  that follows from it: eth's launch_ev row measures the FULL-SWEEP
+  design; the touch-only design's go/no-go is sweep_cap's touch-cap
+  per-decision band (column added this session for exactly this).
+
+  btc 15m — the touch itself loses (-13.63c/share uncensored, -3.13 rule
+  era; halves mixed). The unit's weakness is the SIGNAL in this era, not
+  execution; consistent with launch_ev's -12.64. Nothing to cap; keep
+  collecting.
+
+  INSTRUMENT FINDING — the ladder quotes on whole cents: zero fills 1-5
+  ticks above the touch across every unit and era (257/86/195 rows);
+  every deeper level sits 6+ ticks (~1-1.5c) up. sweep_cap re-bucketed
+  to cents (touch/+0-1c/+1-2c/+2c+), caps at touch/+1c/+2c, and the cap
+  table gained the per-decision autocorrelation-discounted band — what
+  launch_ev would report for a bot built with that cap. Re-smoked exact
+  (bucket rows, cap rows incl. the band column against hand-built
+  series, verdict at the shallowest losing cent tail).
