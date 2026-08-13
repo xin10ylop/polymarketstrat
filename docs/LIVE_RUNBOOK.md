@@ -3626,3 +3626,39 @@ them in that order.
   age histogram so any future mis-binning is visible on sight. Re-smoked
   with a boundary decision pinning bin disjointness. One confirming
   rerun is queued; "still nothing" closes the timing lever entirely.
+
+- 2026-08-13 LEAD_BUCKETS FINE-BIN RUN — timing closed for good, and the
+  age histogram surfaced a real candidate:
+
+  LEAD: the loop fires inside [2.95, 3.00]s — a FIFTY-MILLISECOND spread
+  (p50 2.97 everywhere). There is no timing variation to exploit and the
+  lever is CLOSED. It is also a health check worth keeping: the event
+  loop holds the strike schedule to ~30-50ms.
+
+  AGE — THE CANDIDATE. Decisions split roughly 75% age-2s / 25% age-3s
+  (a completed 1s bar is ~2s old at T-3 by construction; 3s means the
+  spot feed lagged one extra second). Stale-bar (3s) entries underperform
+  fresh-bar (2s) entries in ALL FOUR 5m unit x era views: btc +7.94 vs
+  -6.67 (uncensored) and +8.55 vs -4.77 (rule era); eth +5.93 vs -6.26
+  and +4.80 vs -12.51 — a 12-17c/share spread, mechanically plausible
+  (the extra second of unseen movement is exactly the winner's-curse
+  staleness the audit already believed in). THE BAR IS NOT MET: the
+  halves flip in one era per coin (btc uncensored 3s h2 +1.82; eth rule
+  era 3s h2 +2.31) on ~13-decision half-samples. NOT actionable yet.
+
+  If it firms, the change is a FRESHNESS GATE — skip entry when the
+  newest grid bar is 3s old at decision time. Unlike an execution cap,
+  a skip gate keeps its counterfactual measurable (skipped windows still
+  settle on the tape), so it would not censor the record. Cost: ~25% of
+  entries; on current point estimates it raises per-decision EV on both
+  5m units.
+
+  CAVEATS recorded now, before anyone falls in love: age is not
+  randomized (feed lag correlates with busy tape), and the age effect
+  may partly BE the eth deep-sweep effect (a stale bar means the book
+  has already repriced, which is when sweeps run deep) — the two
+  candidate improvements must NOT have their dollar estimates added; an
+  age x depth cross-tab is the disentangling step if both bars pass.
+
+  QUEUED: re-run the age tables alongside the eth gate re-run in ~3
+  days; btc's uncensored second half is the missing piece of the bar.
