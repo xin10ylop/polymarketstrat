@@ -3305,3 +3305,91 @@ them in that order.
   STANDING RULE FROM ALL SIX INSTANCES: whenever a number is added to a
   report, state the UNIT it counts, and if prose quotes the number, compute
   it rather than typing it.
+
+- 2026-08-13 THE A-TO-Z PRE-LIVE AUDIT. Five parallel line-by-line audits
+  (signal, execution realism, accounting/risk, statistics, config/deploy),
+  the venue rules re-verified against the live gamma API, the server plan
+  re-checked, and every code-level finding fixed and tested the same day
+  (commit "Pre-live audit fix batch"). What follows is the record a launch
+  decision should read.
+
+  VENUE RULES, VERIFIED AT THE SOURCE (gamma API, live markets):
+    - resolution: cryptoMarketConfig twapEnabled=true, twapLookbackSeconds
+      30 (5m) / 60 (15m), streams btc-usd-twap-30s/60s — EXACTLY our oracle.
+    - fees: feeSchedule.rate=0.07 (our formula is exact), takerOnly=TRUE,
+      rebateRate=0.2. MAKERS PAY NOTHING and earn 20% of taker fees.
+    - tick 0.001, min order 5 shares.
+    - THE MAKER ASYMMETRY IS THE LARGEST UNEXPLOITED LEVER: we always take,
+      paying ~1.75c fee + ~1-2c spread/slippage on a ~3c edge. A resting
+      bid pays neither. Fill probability is the open question and it is
+      measurable from the tape+book archives before any code is written.
+
+  SERVER: THE AMS3 PLAN IS DEAD. Netherlands moved to close-only July 2026
+  (sources conflict on whether the API tier is included — conflicting
+  sources mid-crackdown is itself disqualifying). Spain and Sweden remain
+  fully unrestricted. NEW PRIMARY: Vultr Madrid or Stockholm (~28ms to the
+  CLOB in London — irrelevant for a strategy that fires 3s early). The NYC
+  droplet stays paper-only; live NEVER runs from a US IP, and the ToS
+  prohibits circumventing geo restrictions — no VPN tricks, a clean
+  jurisdiction only.
+
+  WHAT THE AGENTS PROVED SOUND (the load-bearing verified-OK list):
+    - NO LOOKAHEAD anywhere in the signal path — poisoned-future fixtures
+      moved the strike by exactly 0.0; backtest parity bit-identical at the
+      target lead; ties consistent with the venue at all three sites.
+    - the paper book is FULL DEPTH (REST + ws snapshots + deltas), so the
+      paper sweep sees what a live FAK would; fills are per-level with
+      exact fees; the consumption ledger prevents re-buying displayed
+      shares; live fill parsing books ambiguity worst-case + sticky halt.
+    - no double-marking of settlements is possible (SQL-guarded, verified
+      under restarts and healer/reconciler overlap in both orders); the
+      three-lock live ceremony, per-trade/day caps, overspend tripwire and
+      balance reconciler all exist as documented and err conservative.
+    - every gate value deployed matches the analysis that chose it, and
+      ORACLE_TIE_BPS/ORACLE_TWAP_S resolve correctly from FAMILY.
+
+  THE EV LADDER, RECONCILED (why +13c became +3-5c): the 08-10 tape
+  backtest conditioned on pre-open taker flow agreeing with the tilt and
+  priced entry at the median PRINT (0.5187); the archive join gates on the
+  archive's clean tilt; live gates on its own staler tilt and pays the
+  swept price (0.5253). ~9.5 of the 9.7c decay is the settle rate
+  difference between those populations. The ledger number is the only one
+  free of both selections: bot/launch_ev.py computes it per decision, at
+  the real paid price, uncensored era only, with an autocorrelation-
+  discounted band. ITS LOWER BOUND IS THE GO/NO-GO NUMBER, PER UNIT.
+
+  LAUNCH BLOCKERS THAT REMAIN (code/work, in order):
+    1. REDEMPTION. Nothing redeems winnings on-chain; live preopen at ~27
+       trades/day on $150 collateral starves in hours, then 4xx -> sticky
+       halt; a restart during the hold refuses startup (balance < BANKROLL).
+       Auto-redeem (CTF redeemPositions) or a proven manual cadence is a
+       hard prerequisite. NOT YET BUILT.
+    2. A preopen-scope fast-bleed breaker: the trailing breaker is
+       snipe-only; between one bad trade and the -20% daily stop nothing
+       protects a live preopen. NOT YET BUILT.
+    3. The btc 5m gate DECISION for money: paper's 0.5bp is a deliberate
+       sample-collection setting; the settled tape says 0.5-1bp does not
+       clear break-even. A live unit trades 1.0bp minimum (the audit's
+       proposed live env block records this).
+    4. launch_ev lower bound > 0 on the uncensored era for the unit being
+       launched. As of the 08-13 baseline NO unit qualifies yet.
+    5. Shadow phase (LIVE_SHADOW=1) on the Madrid/Stockholm box measuring
+       real POST round-trips; set PREOPEN_MIN_LEAD_S from that journal.
+    6. LIVE_MAX_TRADES_DAY sized to redemption turnover (the audit's env
+       block starts at 10, not 40, for exactly this reason).
+
+  MEASUREMENT CHANGE THAT AFFECTS THE PAPER SERIES FROM TODAY: paper
+  preopen entries now sleep PREOPEN_TAKE_RECHECK_S=0.5s and sweep the
+  then-current book, modeling live latency the way snipe paper always has.
+  Expect slightly worse (more honest) paper fills from this point;
+  pnl_daily splits by day, so the regime change is visible. The lean_test/
+  slippage instruments and launch_ev all read recorded prices, so they are
+  unaffected retroactively.
+
+  THE FILE-REVERSION INCIDENT, for the record: midway through applying the
+  fixes, the working tree reverted several files to pre-batch state (env
+  disruption also dropped aiohttp). Every fix was re-applied through an
+  anchor-verified script that FAILS on a missing anchor, then re-tested
+  green and committed immediately. If a future session sees "edits that
+  vanished", check git status FIRST and re-verify by grep before assuming
+  the edit landed.
