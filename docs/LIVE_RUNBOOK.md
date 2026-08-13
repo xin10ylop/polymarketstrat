@@ -3447,3 +3447,60 @@ them in that order.
   marginal 50/70/90 with halves 40/60, book asks .52/.54/.58, and both
   verdict branches exercised: h2 flip → "not actionable", mixed band →
   "unresolved").
+
+- 2026-08-13 GATE_SWEEP FIRST FULL-TAPE RUN — "this basis point thing"
+  answered per unit (1,088 / 1,068 / 362 / 356 priceable windows over 5.6
+  days of tape; every verdict below is the instrument's own pre-registered
+  rule, not a judgement call):
+
+  btc 5m: KEEP 0.5bp. It already has the best c/day (+529.6, halves
+  +521.4/+537.8) — every higher gate wins more often but loses money in
+  absolute terms. MONEY-GATE REVERSAL: the 0.5-1.0bp band PAYS in both
+  halves (+6.5c, +9.2c vs PAID; and book-priced at its own recorded T-3
+  ask 0.5207 it earns +6.18c on the n=85 recorder-era subset). This
+  SUPERSEDES the A-to-Z audit's provisional "a live unit trades 1.0bp
+  minimum", which came from a smaller early tape read. Amended live rule:
+  the btc 5m money gate MAY match the paper 0.5bp, conditional on a
+  gate_sweep re-run at launch time still showing both halves positive.
+
+  eth 5m: PROPOSAL FLAGGED, HELD. The cumulative rule fires for 0.5bp
+  (c/day +372.2 vs +139.5 and +173.6 vs +155.9 against the current 1.0bp
+  in the two halves) — but the book-priced table contradicts it: on the
+  recorder-era subset (n=94, roughly the uncensored era) the 0.5-1.0 band
+  earns -0.11c at its own ask 0.5155. When the fleet-average-PAID table
+  and the recent-era book-priced table disagree, the priced one wins the
+  tie. HOLD; re-run after >=3 more days of tape; act only if BOTH tables
+  agree positive. If ever acted on, eth's launch_ev era resets at the
+  change (the decision population changes with the gate).
+
+  btc 15m: keep 1.0bp (1.25 is best overall at +123.4 but fails h1,
+  195.3 vs 212.8). Caution flag: the current gate's second-half c/day is
+  -22.5 — consistent with launch_ev's -12.64 baseline; this unit's recent
+  form is genuinely weak, not an artifact.
+
+  eth 15m: keep 1.7bp (1.25 best overall but h2 is -9.1).
+
+  Cross-refutation worth recording: flow_filter's hot small-n cells (btc
+  2bp+/other at 85.7% on n=7) are refuted at gate_sweep's larger n — the
+  btc 2bp+ band is 61.8% overall and 52.9% in the second half. Not
+  chasing post-hoc cells was the right call. Also an instrument note:
+  gate_sweep's w/day (50 for btc 5m) undercounts the bot's actual 71/day
+  because the tape only covers windows with prints; the denominator is
+  shared by every candidate so the RANKING is unaffected.
+
+- 2026-08-13 sweep_cap ADDED — the sweep-depth replay. Next lever in the
+  queue: entries sweep the ask ladder to PREOPEN_MAX_PX, and slippage.py
+  measured that at 1.5-2.4c on a 3-10c edge. bot/sweep_cap.py replays the
+  ledger's per-level fill rows (audit F4) per DECISION: pnl/share by
+  depth-in-ticks above the touch with time-split halves, plus a cap
+  replay showing shares, $ deployed, EV c/share and $/day for each cap.
+  The bar, printed in the output: a cap is actionable only if the cut
+  tail loses in BOTH halves AND the same depth loses on the other coin of
+  the family — per-share EV improving is NOT enough, $/day decides.
+  Within-decision depth comparisons are largely robust to the old era's
+  day-censoring, so ERA=1786060800 (rule era) is the larger-n cross-check
+  of the same question. Smoke-verified exact on a planted 8-decision
+  ledger (bucket c/share +10.38/+10.40/-2.30 with fee flowing through,
+  poison mismatch/pre-era/dust decisions excluded, days from kept
+  decisions only, cap deltas exact, verdict firing at the shallowest
+  losing tail).
