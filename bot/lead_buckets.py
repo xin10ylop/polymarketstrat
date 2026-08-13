@@ -35,9 +35,14 @@ import time
 ERA = int(os.environ.get("ERA", "1786450800"))
 MIN_N = int(os.environ.get("MIN_N", "5"))
 DATA_GLOB = os.environ.get("DATA_GLOB", "bot/data/preopen-*/paper.db")
-LEADS = ((0.0, 2.0, "<2.0s"), (2.0, 3.0, "2.0-3.0"),
-         (3.0, 3.5, "3.0-3.5"), (3.5, 99.0, "3.5s+"))
-AGES = ((0, 0, "0s"), (1, 1, "1s"), (2, 99, "2s+"))
+# Half-open [lo, hi) bins. The first run used inclusive edges and double-
+# counted the mass at exactly 3.00s (the loop firing right on target) in
+# two buckets; it also showed the whole population lives in [2.0, 3.0],
+# so the bins are cut fine inside that band with the on-target mass alone
+# in the last one.
+LEADS = ((0.0, 2.5, "<2.5s"), (2.5, 2.9, "2.5-2.9"),
+         (2.9, 3.0, "2.9-3.0"), (3.0, 99.0, "3.0s+"))
+AGES = ((0, 2, "0-1s"), (2, 3, "2s"), (3, 4, "3s"), (4, 99, "4s+"))
 
 
 def table(rows, key, buckets, title):
@@ -45,7 +50,7 @@ def table(rows, key, buckets, title):
     print(f"{'bucket':>9} {'n':>5} {'EV c/sh':>8} {'win%':>6} "
           f"{'h1 EV':>7} {'h2 EV':>7}")
     for lo, hi, lab in buckets:
-        sub = [r for r in rows if r[key] is not None and lo <= r[key] <= hi]
+        sub = [r for r in rows if r[key] is not None and lo <= r[key] < hi]
         if len(sub) < MIN_N:
             continue
         half = len(sub) // 2
@@ -93,6 +98,20 @@ def unit(path):
     print(f"\n{name}: {len(rows)} decisions with entry events"
           + (f" ({unmatched} settled decisions had no event -- pre-"
              f"instrumentation era)" if unmatched else ""))
+    ls = sorted(r[0] for r in rows if r[0] is not None)
+    if ls:
+        def pct(q):
+            return ls[min(len(ls) - 1, int(q * len(ls)))]
+        print(f"  lead: min {ls[0]:.2f} p25 {pct(.25):.2f} "
+              f"p50 {pct(.5):.2f} p75 {pct(.75):.2f} max {ls[-1]:.2f}; "
+              f"exactly on target (3.00) n="
+              f"{sum(1 for v in ls if v == 3.0)}")
+    ages = {}
+    for r in rows:
+        if r[1] is not None:
+            ages[int(r[1])] = ages.get(int(r[1]), 0) + 1
+    print("  age counts: " + (", ".join(
+        f"{k}s:{v}" for k, v in sorted(ages.items())) or "none recorded"))
     table(rows, 0, LEADS, "BY ACHIEVED LEAD (seconds before the open)")
     table(rows, 1, AGES, "BY SPOT AGE AT DECISION (staleness of the bar)")
 

@@ -3597,3 +3597,32 @@ them in that order.
   excluded (the first smoke draft had a confounded fixture — sign cycle
   dividing the lead cycle — which the tool exposed by bucketing
   correctly; the fixture was fixed, not the tool).
+
+- 2026-08-13 LEAD_BUCKETS FIRST RUN — no timing edge, the age==0 idea is
+  moot, and the instrument's own first run exposed its binning bug:
+
+  The achieved-lead population lives entirely inside [2.0, 3.0] seconds
+  with a mass exactly on target (3.00): btc 17/125 uncensored and 60/168
+  rule era; eth 5/69 and 19/84. No lead bucket shows an effect holding
+  both halves on either coin in either era (btc on-target +3.61 vs
+  overall +4.29 uncensored, +2.10 vs +3.58 rule era with mixed halves;
+  eth mixed halves everywhere). VERDICT under the pre-registered bar:
+  timing jitter within the achieved range is not predictive. PREOPEN_
+  LEAD_S / PREOPEN_MIN_LEAD_S stay put, and the live floor will be set
+  by the shadow-phase RTT measurement alone, as already planned — paper
+  shows no edge-based reason to move it.
+
+  AGE==0 GATING (agent A finding 3, eth) CLOSED AS MOOT: essentially
+  every decision in every unit decides on a 2s+ old bar (btc 124/125,
+  eth 69/69 uncensored) — by construction, at T-3 the newest complete 1s
+  grid bar is ~2 seconds old. There is no fresh-bar population to trade;
+  the proposed gate would trade nothing and cannot even be measured.
+
+  Instrument bug, found by its own first run: inclusive bucket edges
+  double-counted the exactly-3.00 mass ("2.0-3.0" n=125 alongside
+  "3.0-3.5" n=17 on 125 decisions). Fixed to half-open bins cut fine
+  inside the real range (<2.5 / 2.5-2.9 / 2.9-3.0 / 3.0+, the last being
+  the on-target mass), and the tool now prints lead percentiles plus an
+  age histogram so any future mis-binning is visible on sight. Re-smoked
+  with a boundary decision pinning bin disjointness. One confirming
+  rerun is queued; "still nothing" closes the timing lever entirely.
