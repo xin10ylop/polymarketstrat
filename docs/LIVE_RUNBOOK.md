@@ -3393,3 +3393,57 @@ them in that order.
   green and committed immediately. If a future session sees "edits that
   vanished", check git status FIRST and re-verify by grep before assuming
   the edit landed.
+
+- 2026-08-13 TWO IMPROVEMENT HYPOTHESES MEASURED AND CLOSED. The user's
+  standing question is "the bots are profitable but not at the backtest's
+  66% — improve them." The two largest candidate levers were built as
+  read-only probes (maker_probe, flow_filter), smoke-tested against planted
+  fixtures, and run on the full backfilled tape. Both FAIL their own
+  pre-registered bars, and both closures are informative:
+
+  MAKER ENTRY: CLOSED (not viable at current fill rates). The probe gave
+  the taker baseline every advantage it could (zero slippage, and the 20%
+  maker rebate NOT credited to the maker) so that no fill model would be
+  needed if the maker still lost — and it lost. btc 5m: taker 63.0% at ask
+  0.5237 = +8.89c/window; resting bid conservative (trade-through) fills
+  27.7% for +3.53c; even the optimistic at-level bound is +7.73c — the fee
+  and slippage saved never overcome the ~72% of windows that pay nothing.
+  eth 5m: taker +3.35c; maker fills 4.9-19.7% for ~0c. The post-open
+  horizons show textbook adverse selection (win|fill falls while win|no
+  rises as the cancel horizon extends — the bid fills exactly when the flow
+  disagrees). btc 15m's few positive at-level cells sit on n=48 with an
+  EMPTY first-half OOS ("no fills") — not evidence. Taking the ask is the
+  right entry for this strategy; revisit only if books thicken enough to
+  triple the fill rate.
+
+  FLOW FILTER (the 66% population, on purpose): CLOSED (not actionable).
+  The backtest's 66.9% required a confirming pre-open taker BUY, so the
+  natural fix was to require that confirmation live. Measured on all gated
+  windows of the full tape: btc 5m confirm 212 windows at 63.7% vs oppose
+  65 at 67.7% — OPPOSING flow settles HIGHER, and confirm trails in both
+  halves; eth 5m confirm does lead both halves (60.5% vs 56.7%), but the
+  pre-registered bar requires BOTH coins and btc fails it decisively. The
+  9.5pp the backtest attributed to informed-flow selection does not exist
+  as a live conditional edge — it was era + selection artifact. The
+  all-gated-windows design stands. (The btc tilt×flow cross-table's hot
+  cells — 1-2bp/other 80.0% on n=25, 2bp+/other 85.7% on n=7 — are small-n
+  post-hoc; noted, not chased.)
+
+- 2026-08-13 gate_sweep ADDED — the per-decision money-gate instrument.
+  What actually remains from both probes is the same signal pointing at
+  "this basis point thing": win rate rises with tilt magnitude. Whether the
+  GATE should move is a frequency-vs-win-rate trade, so bot/gate_sweep.py
+  sweeps candidate gates over every settled tape window per decision and
+  ranks them by the objective that pays: c/day = (settle% − break-even at
+  paid) × windows/day. Three tables: CUMULATIVE (the c/day ranking with
+  time-split halves), MARGINAL BANDS (does the lowest band pay for itself —
+  the live money-gate question directly), BOOK-PRICED BANDS (each band at
+  its own recorded T-3 ask, because entry_ceiling proved pricing can invert
+  a win-rate advantage). Pre-registered bars printed in the output: a gate
+  change needs c/day better in BOTH halves and is then only a PROPOSAL for
+  re-verification; the money-gate band verdict needs the same sign in both
+  halves. Smoke-verified exact on a 40-window planted fixture (cumulative
+  70.0/80.0/90.0%, w/day 216/144/72, c/day +3396.5/+3704.3/+2572.2,
+  marginal 50/70/90 with halves 40/60, book asks .52/.54/.58, and both
+  verdict branches exercised: h2 flip → "not actionable", mixed band →
+  "unresolved").
