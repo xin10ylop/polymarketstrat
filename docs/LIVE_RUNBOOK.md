@@ -3556,3 +3556,44 @@ them in that order.
   launch_ev would report for a bot built with that cap. Re-smoked exact
   (bucket rows, cap rows incl. the band column against hand-built
   series, verdict at the shallowest losing cent tail).
+
+- 2026-08-13 SWEEP_CAP CENT-BUCKET RUN — btc's donation is localized
+  BEYOND +2c, and the family execution story is now coherent:
+
+  btc 5m: the first two cents of depth PAY — +0-1c +4.83c/sh and +1-2c
+  +11.29 (uncensored; rule era +4.16 and +9.43 with both halves positive:
+  +7.59/+0.32 and +21.72/+0.55). The +2c+ tail LOSES -17.09c/share with
+  both halves negative (-1.91/-34.72), identical in both eras because all
+  13 such decisions are post-08-11 — but n=13 is below the tool's own
+  MIN_DEC bar (needs >=20), so the verdict is "keep collecting", reached
+  in ~2 more days at the current tail rate. If it confirms, the proposal
+  is a +2c cap for the btc live design: cap +2c is the best $/day in
+  both eras (+726.76 vs +584.17 uncapped; +529.85 vs +437.02). Each coin
+  would then be capped exactly where its own book stops paying — eth at
+  the touch, btc at +2c.
+
+  eth 5m: touch-only per-decision band +4.42 [-7.25, +16.10] on the
+  uncensored era — direction confirmed a third time, band includes zero,
+  NOT qualified yet. The per-share (+11.20) vs per-decision (+4.42) gap
+  is share-weighting favoring thick-touch decisions; the per-decision
+  number is the launch statistic and the binding one.
+
+  btc 15m: negative at every cap including touch-only; the +2c+ bucket's
+  +10.36 (n=11, halves +27.95/-2.45) is small-n noise. The unit's
+  problem remains the signal in this era, not execution.
+
+- 2026-08-13 lead_buckets ADDED — the timing probe. Every preopen entry
+  records its ACTUAL achieved lead and the spot bar's age; bot/
+  lead_buckets.py buckets settled decisions by both (launch_ev-style
+  filters, per-decision EV and win% with time halves). This finally
+  instruments two standing questions: whether late entries settle worse
+  (which would move PREOPEN_MIN_LEAD_S, relevant to the live shadow-
+  phase RTT decision) and agent A's never-measured "eth would need
+  age==0 gating". Caveats printed with the numbers: lead is not
+  randomized — associations, not causes — and any timing change needs
+  both halves AND both coins. Smoke-verified exact against a planted
+  ledger with independently computed bucket expectations, an unmatched-
+  event decision reported separately, and mismatch/pre-era decisions
+  excluded (the first smoke draft had a confounded fixture — sign cycle
+  dividing the lead cycle — which the tool exposed by bucketing
+  correctly; the fixture was fixed, not the tool).
