@@ -17,6 +17,7 @@ class RiskManager:
         self._halts = {}
         self._started = time.time()
         self._shadow_day = None      # UTC day whose shadow stop is recorded
+        self._shadow_trail_day = None  # UTC day whose shadow trail-trip is
         # RE-DERIVE HALTS BEFORE ANYONE CAN TRADE (audit 2026-08-13). run()
         # sleeps 30s before its first _check, so a restarted bot traded for
         # ~30-35s before a mismatch or daily-loss halt re-armed — every crash
@@ -116,6 +117,31 @@ class RiskManager:
                 and (self.ledger.snipe_fills_since_trailing_halt()
                      >= self.cfg.snipe_trailing_rearm_fills)):
             self.halt("snipe", f"trailing {n}-fill pnl {tp:.2f} < {trail_floor:.2f}")
+        # preopen fast-bleed breaker (launch blocker #2, 2026-08-19): a bad
+        # half hour must not ride the whole daily stop down with real money.
+        # The ledger window is bounded by the last preopen trailing HALT, so
+        # after a human restart it cannot re-trip until N fresh decisions
+        # exist. Paper records instead of enforcing (same reasoning as the
+        # shadow daily stop): the SHADOW_TRAIL events ARE the calibration —
+        # trip-days per week at this floor, measured before launch.
+        tpp, npp = self.ledger.preopen_trailing_pnl(self.cfg.preopen_trailing_n)
+        p_floor = -self.cfg.preopen_trailing_pnl_frac * self.cfg.max_daily_loss
+        if npp >= self.cfg.preopen_trailing_n and tpp < p_floor:
+            if self.cfg.mode == "live":
+                self.halt("preopen", f"trailing {npp}-decision pnl "
+                          f"{tpp:.2f} < {p_floor:.2f}")
+            else:
+                day = int(time.time() // 86400)
+                if self._shadow_trail_day != day:
+                    self._shadow_trail_day = day
+                    self.ledger.event(
+                        "SHADOW_TRAIL",
+                        f"preopen: trailing {npp}-decision pnl {tpp:.2f} "
+                        f"< {p_floor:.2f}")
+                    log.warning(
+                        "SHADOW fast-bleed: trailing %d-decision pnl %.2f < "
+                        "%.2f — live would halt preopen here; paper keeps "
+                        "trading and records the trip", npp, tpp, p_floor)
         if self.cfg.mode == "live":
             # LIVE STICKY HALTS MUST SURVIVE A RESTART (audit 2026-08-13).
             # Ambiguous fills, unexpected order errors and reconciler

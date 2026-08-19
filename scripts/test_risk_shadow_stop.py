@@ -79,6 +79,11 @@ class FakeLedger:
     def snipe_trailing_pnl(self, n):
         return (0.0, 0)
 
+    def preopen_trailing_pnl(self, n):
+        # fast-bleed breaker input (launch blocker #2): default = no
+        # trailing window yet; the breaker's own tests override this
+        return getattr(self, "_trail", (0.0, 0))
+
     def snipe_fills_since_trailing_halt(self):
         return 0
 
@@ -183,6 +188,34 @@ rlp, _ = rm(mode="paper", pnl=0.0)
 rlp.ledger.needs_ack = lambda: 1786500000.0
 rlp._check()
 check_true("paper ignores live incident events", not rlp.halted("preopen"))
+
+print("\nthe fast-bleed breaker: live halts preopen, paper records")
+# floor = 0.6 * max_daily_loss(250) = 150; a -160 trailing window trips it
+rt, ledt = rm(mode="live")
+rt.ledger._trail = (-160.0, 20)
+rt._check()
+check_true("live halts the preopen scope", rt.halted("preopen"))
+check_true("but not the snipe scope", not rt.halted("snipe"))
+check_true("sticky: a human must restart", rt._halts["preopen"][1] is None)
+rp, ledp = rm(mode="paper")
+rp.ledger._trail = (-160.0, 20)
+rp._check()
+check_true("paper does NOT halt", not rp.halted("preopen"))
+check("but the trip is on the record", ledp.kinds(), ["SHADOW_TRAIL"])
+check_true("with the numbers that tripped it",
+           "-160.00" in ledp.events[0][1], f"({ledp.events[0][1]})")
+for _ in range(50):
+    rp._check()
+check("recorded once per day, not once per check", len(ledp.events), 1)
+rs, leds = rm(mode="live")
+rs.ledger._trail = (-160.0, 19)
+rs._check()
+check_true("a short window (n<N) never trips, even live",
+           not rs.halted("preopen"))
+rg2, ledg2 = rm(mode="live")
+rg2.ledger._trail = (-140.0, 20)
+rg2._check()
+check_true("above the floor never trips", not rg2.halted("preopen"))
 
 print("\na profitable day does nothing at all")
 rg, ledg = rm(pnl=+500.0)

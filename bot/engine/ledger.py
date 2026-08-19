@@ -187,6 +187,24 @@ class Ledger:
             (since, n)).fetchall()
         return sum(p for (p,) in rows), len(rows)
 
+    def preopen_trailing_pnl(self, n):
+        """Sum of the last n settled preopen DECISIONS' pnl (grouped by
+        window — audit F4: one sweep writes a row per price level). Same
+        contract as the snipe version: 7d wall-clock bound, and bounded by
+        the last preopen trailing HALT so a human restart is judged on a
+        full fresh window of new trading."""
+        since = time.time() - 7 * 86400
+        row = self.db.execute(
+            "SELECT MAX(ts) FROM events WHERE kind='HALT' "
+            "AND detail LIKE 'preopen: trailing%'").fetchone()
+        if row and row[0] is not None:
+            since = max(since, row[0])
+        rows = self.db.execute(
+            "SELECT SUM(pnl) FROM fills WHERE strategy='preopen' "
+            "AND pnl IS NOT NULL AND ts > ? GROUP BY wts "
+            "ORDER BY MAX(ts) DESC LIMIT ?", (since, n)).fetchall()
+        return sum(p for (p,) in rows), len(rows)
+
     def unmarked_old_fills(self, older_than_s=900, newer_than_s=172800):
         """Unmarked fills in the recent window only: this feeds the
         'reconciler falling behind' halt, which must reflect the reconciler's

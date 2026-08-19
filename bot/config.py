@@ -242,6 +242,17 @@ class Config:
     # re-halts instantly (deadlock: can't dilute the window while halted).
     # A restart = the human chose to resume; judge the NEW trading.
     snipe_trailing_rearm_fills: int = _env("SNIPE_TRAILING_REARM", 10, int)
+    # --- preopen fast-bleed breaker (launch blocker #2, 2026-08-19) ---
+    # The daily stop is the LAST line; a fast bleed inside one session needs
+    # a tighter tripwire before real money. Trailing N settled DECISIONS
+    # (not fill rows — audit F4); floor = frac x max_daily_loss, mirroring
+    # the snipe breaker. LIVE: sticky halt on the preopen scope. PAPER:
+    # recorded as SHADOW_TRAIL, never enforced — the shadow events measure
+    # the trip rate so the floor is sigma-calibrated from data before
+    # launch instead of guessed (see LIVE_RUNBOOK 2026-08-19).
+    preopen_trailing_n: int = _env("PREOPEN_TRAILING_N", 20, int)
+    preopen_trailing_pnl_frac: float = _env(
+        "PREOPEN_TRAILING_PNL_FRAC", 0.6, float)
     max_unmarked_fills: int = 5            # halt if this many old fills lack settlement
     # Windows finishing within this margin are photo-finishes: the oracle
     # cross-check is skipped (logged as near_tie) instead of arming the

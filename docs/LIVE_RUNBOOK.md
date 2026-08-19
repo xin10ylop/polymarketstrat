@@ -3800,3 +3800,25 @@ them in that order.
   clears break-even on BOTH coins for the first time (btc 56.0% vs
   54.28 on n=590; eth 54.9% on n=740). The go/no-go still belongs to
   launch_ev on real fills — the tape doesn't pay the real ask.
+
+- 2026-08-19 FAST-BLEED BREAKER BUILT (launch blocker #2 of 6). The daily
+  stop is the last line of defense; a live unit bleeding fast inside one
+  session needed a tighter tripwire. bot/engine/risk.py now checks the
+  trailing PREOPEN_TRAILING_N (20) settled DECISIONS (grouped by window,
+  audit F4) against -PREOPEN_TRAILING_PNL_FRAC (0.6) x max_daily_loss,
+  mirroring the snipe breaker's shape including the judged-on-fresh-
+  trading restart contract (the ledger window is bounded by the last
+  preopen trailing HALT). LIVE: sticky halt on the preopen scope only.
+  PAPER: recorded as SHADOW_TRAIL, never enforced — and the shadow
+  events ARE the calibration: trip-days per week at this floor, measured
+  on real paper trading before any launch, so the live floor is set from
+  data instead of guessed. Pinned in test_risk_shadow_stop (live halts
+  preopen-only and sticky; paper records once per day; n<N and
+  above-floor never trip) and test_ledger_day (per-decision grouping,
+  strategy scoping, halt-bounded window). Deploys with the next unit
+  restart; no restart needed urgently since paper only records.
+
+  REMAINING LAUNCH BLOCKERS: redemption path (next build); shadow phase
+  on the EU box (user action: create the Vultr Madrid/Stockholm
+  instance); launch_ev qualification on the new era; live env block per
+  runbook; LIVE_MAX_TRADES_DAY sizing (follows redemption design).

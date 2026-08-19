@@ -88,6 +88,37 @@ try:
     check_true("a NEW incident re-arms past the old ack",
                led.needs_ack() is not None)
 
+    print("\npreopen_trailing_pnl counts DECISIONS, not fill rows (F4)")
+    now = time.time()
+    # one decision swept as three rows (-30 total), one as a single row (+10)
+    for px, sz, pnl in ((0.52, 100, -10.0), (0.53, 50, -10.0),
+                        (0.54, 40, -10.0)):
+        led.db.execute(
+            "INSERT INTO fills VALUES(9, ?, 7000, 'preopen', 't', ?, ?, "
+            "0.0, 0, 0.0, ?)", (now - 500, px, sz, pnl))
+    led.db.execute(
+        "INSERT INTO fills VALUES(10, ?, 7300, 'preopen', 't', 0.52, 100, "
+        "0.0, 0, 1.0, 10.0)", (now - 200,))
+    # a snipe fill in the same span must not leak in
+    led.db.execute(
+        "INSERT INTO fills VALUES(11, ?, 7300, 'snipe', 't', 0.52, 100, "
+        "0.0, 0, 0.0, -99.0)", (now - 100,))
+    led.db.commit()
+    tp, n = led.preopen_trailing_pnl(20)
+    # the day-boundary fixtures above are ALSO preopen decisions inside the
+    # 7d window: wts 1000 (-300) and wts 2000 (+50) join the two new ones,
+    # and the three-row sweep at wts 7000 must count exactly once
+    check("four decisions, rows collapsed per window",
+          (round(tp, 2), n), (-270.0, 4))
+    tp, n = led.preopen_trailing_pnl(1)
+    check("a window of 1 sees only the newest decision", (tp, n), (10.0, 1))
+    # a preopen trailing HALT bounds the window: only newer decisions count
+    led.event("HALT", "preopen: trailing 20-decision pnl -160.00 < -150.00")
+    led.db.execute("UPDATE events SET ts=? WHERE kind='HALT'", (now - 300,))
+    led.db.commit()
+    tp, n = led.preopen_trailing_pnl(20)
+    check("a restart is judged on fresh trading only", (tp, n), (10.0, 1))
+
     print("\nlive _parse_fill: an abnormal body is ambiguous, never a miss")
     sh, px = LiveExecutor._parse_fill("matched", 0.56)
     check("non-dict response books as ambiguous (-1)", sh, -1.0)
