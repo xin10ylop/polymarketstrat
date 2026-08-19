@@ -68,8 +68,8 @@ tmp = tempfile.mkdtemp()
 A = 100000.0
 
 
-def grid(coin, spans):
-    p = os.path.join(tmp, "twapcal")
+def grid(coin, spans, root=None):
+    p = os.path.join(root or tmp, "twapcal")
     os.makedirs(p, exist_ok=True)
     db = sqlite3.connect(os.path.join(p, f"{coin}_1s.db"))
     db.execute("CREATE TABLE IF NOT EXISTS px(ts INTEGER PRIMARY KEY, v REAL)")
@@ -80,8 +80,8 @@ def grid(coin, spans):
     db.close()
 
 
-def ledger(name, flags):
-    d = os.path.join(tmp, name)
+def ledger(name, flags, root=None):
+    d = os.path.join(root or tmp, name)
     os.makedirs(d, exist_ok=True)
     db = sqlite3.connect(os.path.join(d, "paper.db"))
     db.execute("CREATE TABLE settlements(wts INTEGER PRIMARY KEY, "
@@ -149,6 +149,46 @@ try:
     ev_eth = sqlite3.connect(eth_db).execute(
         "SELECT COUNT(*) FROM events").fetchone()[0]
     check("no record written for the refused unit", ev_eth, 0)
+
+    print("\nthe blackout override is surgical: NO-GRID only, on the record")
+    # W5 sits in a total recorder blackout (no grid rows at all); W6 is a
+    # decisive AGREE. Accepting W5 by wts must clear the unit and say so.
+    ov = os.path.join(tmp, "ov")
+    W5, W6, W7 = RULE2 + 6000, RULE2 + 6900, RULE2 + 7800
+    grid("btc", [(W6 - 60, W6, A), (W6 + 240, W6 + 300, A * 1.001)],
+         root=ov)
+    ov_db = ledger("preopen-btc", [(W5, "up"), (W6, "up")], root=ov)
+    env_ov = dict(os.environ,
+                  PAPER_GLOB=os.path.join(ov, "preopen-*", "paper.db"),
+                  TWAP_DIR=os.path.join(ov, "twapcal"),
+                  ALLOW_UNVERIFIED_WTS=str(W5))
+    r1 = subprocess.run([PY, "scripts/clear_twap60_mismatches.py",
+                         "--apply"], cwd=REPO, env=env_ov,
+                        capture_output=True, text=True)
+    check("an accepted blackout no longer blocks the unit",
+          r1.returncode, 0)
+    check_true("and is printed as ACCEPTED", "ACCEPTED" in r1.stdout)
+    check("both flags cleared", flags(ov_db), {W5: 0, W6: 0})
+    det = sqlite3.connect(ov_db).execute(
+        "SELECT detail FROM events WHERE kind='rule2_migration'"
+    ).fetchone()[0]
+    check_true("the acceptance is in the clearing record",
+               "accepted-unverifiable" in det and str(W5) in det,
+               f"({det})")
+    # a DISAGREE can NEVER be overridden, listed or not
+    grid("btc", [(W7 - 60, W7, A), (W7 + 240, W7 + 300, A * 1.001)],
+         root=ov)
+    d2 = sqlite3.connect(ov_db)
+    d2.execute("INSERT INTO settlements VALUES(?,?,?,1,?)",
+               (W7, "down", "?", W7 + 400))
+    d2.commit()
+    d2.close()
+    env_ov["ALLOW_UNVERIFIED_WTS"] = str(W7)
+    r2 = subprocess.run([PY, "scripts/clear_twap60_mismatches.py",
+                         "--apply"], cwd=REPO, env=env_ov,
+                        capture_output=True, text=True)
+    check("a listed DISAGREE still refuses", r2.returncode, 1)
+    check("and stays flagged", flags(ov_db)[W7], 1)
 finally:
     shutil.rmtree(tmp, ignore_errors=True)
 

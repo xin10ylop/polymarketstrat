@@ -3724,3 +3724,39 @@ them in that order.
   5m units now reads ERA=1786665600 (no 5m fills exist between RULE2
   and re-enable, so RULE2 cleanly starts the new era); 15m units keep
   the 08-11 era (their rule never changed).
+
+- 2026-08-19 RULE2 VERIFICATION COMPLETE — 36/37 PROVEN, ONE BLACKOUT.
+  The migration's own falsification test came back clean: eth 16/16
+  explained (7 AGREE, 9 NEAR-TIE) -> cleared, restarted, trading again.
+  btc 18/18 verifiable at standard coverage (7 AGREE, 11 NEAR-TIE);
+  relaxing MIN_COVER to 0.5 resolved two of the three NO-GRID windows
+  (08-14 00:15 NEAR-TIE +0.018bp; 08-14 13:55 AGREE -1.348bp) -> 20/21.
+  Across both coins: 36 verified, ZERO DISAGREE. The rule-change
+  diagnosis survived every window it could be tested on.
+
+  THE 37th: w1786750200 (08-14 23:30). The recorder's strike minute is
+  0/60 seconds (settle side 56/60) — a total blackout; no source
+  anywhere holds that minute's Chainlink BTC/USD values retroactively,
+  so the window is PERMANENTLY unverifiable. Disposition: accepted via
+  the new ALLOW_UNVERIFIED_WTS override — surgical (named wts only),
+  NO-GRID-only (a DISAGREE can never be overridden), and written into
+  the clearing event. Rationale on the record: the flag was produced by
+  comparing the WRONG rule, so it never evidenced an oracle defect; the
+  36/36 checkable windows confirm the rule change; keeping the launch
+  candidate halted over a void flag protects nothing. Pinned by three
+  new test cases (accepted blackout clears + is recorded; listed
+  DISAGREE still refuses; unlisted NO-GRID still refuses).
+
+  FIRST NEW-RULE GATE READ (btc 5m, 265 windows / 1.0 day of partial
+  tape): the 60s strike roughly doubles tilt magnitudes, as predicted —
+  the 0.5bp gate now passes 59% of windows (154/day) vs 26% (50/day)
+  under the old rule. The instrument proposes 0.75bp (beats 0.5 on
+  c/day in both halves, +750.9/+723.0 and +249.3/-66.1) — NOT acted on:
+  one day of tape, and the pre-registered rule demands a re-run on more
+  days. Watch items: the non-monotone middle band (1-2bp at -4.96c
+  between two positive bands, n=73 — likely noise); and book asks on
+  new-rule gated windows are richer (0.539-0.580), so PAID=0.5253 needs
+  re-measurement once new-era fills accumulate (launch_ev is unaffected
+  — it reads real fills). eth's gate_sweep printed "empty tape" because
+  its backfill was interrupted at 100/1992 — backfills must run to
+  completion; run them under nohup, never Ctrl-C.

@@ -30,6 +30,16 @@ classed:
 windows in that unit; otherwise it refuses and changes nothing -- paste
 the output. Windows outside [RULE2, VERIFIED_BY2) are never touched, and
 anything flagged after VERIFIED_BY2 is a NEW incident, not this one.
+
+ALLOW_UNVERIFIED_WTS -- the surgical override for a permanent blackout.
+2026-08-19: one btc window (1786750200) sits in a total recorder outage
+(strike minute 0/60 seconds); nothing anywhere holds that minute's
+oracle values, so it can never be verified. With 36/37 windows verified
+and zero DISAGREE, its flag -- produced by comparing the WRONG rule --
+protects nothing. Naming a window here accepts it as unverifiable:
+  ALLOW_UNVERIFIED_WTS=1786750200 ... --apply
+Only a NO-GRID window can be accepted; a DISAGREE always refuses, listed
+or not. The acceptance is printed and written into the clearing event.
 """
 import glob
 import os
@@ -45,6 +55,8 @@ MIN_COVER = float(os.environ.get("MIN_COVER", "0.9"))
 PAPER_GLOB = os.environ.get("PAPER_GLOB", "bot/data/preopen-*/paper.db")
 TWAP_DIR = os.environ.get("TWAP_DIR", "bot/data/twapcal")
 APPLY = "--apply" in sys.argv
+ALLOW = {int(x) for x in
+         os.environ.get("ALLOW_UNVERIFIED_WTS", "").split(",") if x.strip()}
 
 
 def mean60(g, a, b):
@@ -92,7 +104,9 @@ def unit(path):
     if not rows:
         return True
     win_len = 300
-    counts = {"AGREE": 0, "NEAR-TIE": 0, "DISAGREE": 0, "NO-GRID": 0}
+    counts = {"AGREE": 0, "NEAR-TIE": 0, "DISAGREE": 0, "NO-GRID": 0,
+              "ACCEPTED": 0}
+    accepted = []
     print(f"{'window':>12} {'utc':>16} {'exchange':>9} {'60s says':>9} "
           f"{'margin bp':>10} {'class':>9}")
     for wts, winner in rows:
@@ -100,6 +114,9 @@ def unit(path):
         st, cs = mean60(g, wts + win_len - N, wts + win_len)
         if k is None or st is None or ck < MIN_COVER or cs < MIN_COVER:
             cls, w60, marg = "NO-GRID", "?", float("nan")
+            if wts in ALLOW:
+                cls = "ACCEPTED"
+                accepted.append(wts)
         else:
             marg = (st - k) / k * 1e4
             w60 = "up" if st >= k else "down"
@@ -126,8 +143,11 @@ def unit(path):
         db.execute(
             "INSERT INTO events VALUES(?, 'rule2_migration', ?)",
             (time.time(), f"cleared {len(rows)} RULE2 mismatch flags "
-             f"({counts['AGREE']} agree, {counts['NEAR-TIE']} near-tie) "
-             f"after 60s re-verification against the recorded grid"))
+             f"({counts['AGREE']} agree, {counts['NEAR-TIE']} near-tie"
+             + (f", {counts['ACCEPTED']} accepted-unverifiable "
+                f"{accepted} (recorder blackout)" if accepted else "")
+             + f") after 60s re-verification against the recorded grid "
+             f"at min_cover {MIN_COVER}"))
         db.commit()
         print(f"  APPLIED: {len(rows)} flags cleared; the sticky halt "
               f"releases on the next unit restart.")
