@@ -44,7 +44,7 @@ from bot.scalp_backtest import CACHE, tilt_at
 from bot.twap_verify import COIN, DB_DIR, FAMILY
 
 _GATES = {("btc", "5m"): 0.5, ("btc", "15m"): 1.0,
-          ("eth", "5m"): 1.0, ("eth", "15m"): 1.7}
+          ("eth", "5m"): 0.5, ("eth", "15m"): 1.7}
 GATE = float(os.environ.get("GATE", _GATES.get((COIN, FAMILY), 1.0)))
 FLOW_FROM = int(os.environ.get("FLOW_FROM", "-60"))   # start of flow window
 PAID = float(os.environ.get("PAID", "0.5253"))        # measured real entry

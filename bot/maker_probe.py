@@ -37,7 +37,7 @@ from bot.twap_verify import COIN, DB_DIR, FAMILY, WINDOW
 BOOK_DIR = os.environ.get("BOOK_DIR", "bot/data/bookcal")
 LEAD = 3
 _GATES = {("btc", "5m"): 0.5, ("btc", "15m"): 1.0,
-          ("eth", "5m"): 1.0, ("eth", "15m"): 1.7}
+          ("eth", "5m"): 0.5, ("eth", "15m"): 1.7}
 GATE = float(os.environ.get("GATE", _GATES.get((COIN, FAMILY), 1.0)))
 HORIZONS = (0, 5, 15)           # cancel at open, T+5, T+15
 

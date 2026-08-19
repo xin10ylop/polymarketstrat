@@ -23,12 +23,15 @@ Environment=TOLL_ENABLED=0
 Environment=BOT_DATA_DIR=/opt/polymarketstrat/bot/data/preopen-eth
 # 3s: sign accuracy is 98.9% there and 83% at 10s. Measured, not chosen.
 Environment=PREOPEN_LEAD_S=3
-# below 1bp the tilt is noise by construction — the gate is the strategy
-# eth wants a HIGHER gate than btc, and the reason is mechanical: its 1s vol
-# is 0.185 bp/s against btc's 0.108, so a basis point of tilt is worth less.
-# Measured: eth's 0.25-1.0bp buckets all sit at 52-54%, barely over the
-# 52.25% break-even, and it only separates above 1bp.
-Environment=PREOPEN_TILT_MIN_BP=1.0
+# 0.5 since 2026-08-19, under the RULE2 (60s-strike) tilt definition. The
+# old 1.0 was measured on the 30s strike ("eth's 0.25-1.0bp buckets sit at
+# 52-54%") and is obsolete — RULE2 changed what a basis point of tilt IS.
+# On 5.5 days of new-rule tape (gate_sweep SINCE=1786665600): 0.5 beats
+# 1.0 on c/day in BOTH halves (+767.3/+311.3, +368.8/+146.8) and the
+# 0.5-1.0bp band earns +5.10c at its own recorded T-3 ask — the two-table
+# condition pre-registered on 08-13. REVERT if a ~3-day re-run shows 0.5
+# no longer ahead in both halves.
+Environment=PREOPEN_TILT_MIN_BP=0.5
 # a flat pre-open book sits near 0.50 both sides; above this the makers have
 # already priced the tilt and the entry is no longer the one we measured
 Environment=PREOPEN_MAX_PX=0.56

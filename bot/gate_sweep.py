@@ -42,7 +42,7 @@ from bot.twap_verify import COIN, DB_DIR, FAMILY, WINDOW
 BOOK_DIR = os.environ.get("BOOK_DIR", "bot/data/bookcal")
 LEAD = 3
 _GATES = {("btc", "5m"): 0.5, ("btc", "15m"): 1.0,
-          ("eth", "5m"): 1.0, ("eth", "15m"): 1.7}
+          ("eth", "5m"): 0.5, ("eth", "15m"): 1.7}
 CUR = float(os.environ.get("CUR", _GATES.get((COIN, FAMILY), 1.0)))
 _SWEEP = {"5m": "0.5,0.75,1.0,1.25,1.5,2.0",
           "15m": "1.0,1.25,1.5,1.7,2.0,2.5"}

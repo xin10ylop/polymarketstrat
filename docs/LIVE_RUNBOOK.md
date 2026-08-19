@@ -3760,3 +3760,43 @@ them in that order.
   — it reads real fills). eth's gate_sweep printed "empty tape" because
   its backfill was interrupted at 100/1992 — backfills must run to
   completion; run them under nohup, never Ctrl-C.
+
+- 2026-08-19 FULL NEW-RULE GATE SWEEP (backfill complete: 1,460 btc /
+  1,490 eth priceable windows over the whole 5.5-day RULE2 era) — and
+  the improvement program's FIRST config change:
+
+  btc 5m: KEEP 0.5bp. Best c/day (+612.1; halves +575.9/+648.4) and the
+  0.5-1.0bp money band pays in both halves (+4.5c/+9.8c), re-confirming
+  the money-gate-at-0.5 amendment on new-rule data. The 1-day partial
+  read's "0.75 proposal" and its negative 1-2bp middle band BOTH
+  evaporated at full sample — the instrument's own re-run clause caught
+  it, again. One-day reads never act; this is now the third recorded
+  demonstration.
+
+  eth 5m: GATE CHANGED 1.0 -> 0.5 (PREOPEN_TILT_MIN_BP in the eth
+  service file; _GATES defaults in gate_sweep/flow_filter/maker_probe
+  updated to match). The condition pre-registered on 08-13 — c/day
+  ahead in BOTH halves AND the book-priced band positive — is met on
+  the full new-rule era: +767.3/+311.3 and +368.8/+146.8 against the
+  1.0 gate, and the 0.5-1.0bp band earns +5.10c at its own recorded
+  ask (0.5356). The old 1.0 rationale measured 30s-strike tilts and
+  died with RULE2. REVERT CLAUSE: gate_sweep SINCE=1786665600 re-run in
+  ~3 days; if 0.5 is no longer ahead of 1.0 in both halves, revert.
+  eth launch_ev era resets at this change (the era was ~1 day old; the
+  cost is trivial and the entry rate roughly doubles: ~134 gated
+  windows/day at 0.5 vs ~80 at 1.0).
+
+  WATCH ITEM — THE 0.56 CEILING NOW BINDS. New-rule books price the
+  doubled tilts richly: btc band-average asks 0.566/0.585/0.626 — the
+  LOWEST band's average sits above PREOPEN_MAX_PX=0.56. Many gated
+  windows will be refused as book_leans, and the bots trade the
+  cheap-ask subset — which the book-priced table suggests is the GOOD
+  subset (the rich-ask bands are negative at their own prices). Nothing
+  changed; measure first: re-run entry_ceiling + launch_ev after 2-3
+  days of new-era fills, and re-measure PAID (0.5253 is old-era) before
+  the next PAID-based read.
+
+  Tape-level health worth recording: at gate 0.5 the Wilson lower bound
+  clears break-even on BOTH coins for the first time (btc 56.0% vs
+  54.28 on n=590; eth 54.9% on n=740). The go/no-go still belongs to
+  launch_ev on real fills — the tape doesn't pay the real ask.
