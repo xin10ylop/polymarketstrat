@@ -53,6 +53,10 @@ BANDS = [float(x) for x in os.environ.get(
     "BANDS", _BANDS.get(FAMILY, _BANDS["5m"])).split(",")]
 PAID = float(os.environ.get("PAID", "0.5253"))     # measured fleet average
 MIN_N = int(os.environ.get("MIN_N", "40"))
+# RULE2 changed the 5m tilt definition (30s -> 60s strike), so gates cut on
+# the mixed tape conflate two populations. SINCE=1786665600 restricts the
+# sweep to new-rule windows — the only ones a gate decision now applies to.
+SINCE = int(os.environ.get("SINCE", "0"))
 
 
 def split_stats(sub, days, be):
@@ -80,8 +84,10 @@ def main():
             raise SystemExit(f"missing {p}")
     grid = dict(sqlite3.connect(f"file:{gp}?mode=ro", uri=True)
                 .execute("SELECT ts, v FROM px"))
-    wl = list(sqlite3.connect(f"file:{tp}?mode=ro", uri=True).execute(
-        "SELECT wts, winner FROM tape WHERE winner IS NOT NULL ORDER BY wts"))
+    wl = [(w, x) for w, x in sqlite3.connect(
+        f"file:{tp}?mode=ro", uri=True).execute(
+        "SELECT wts, winner FROM tape WHERE winner IS NOT NULL "
+        "ORDER BY wts") if w >= SINCE]
     book = {}
     bp = os.path.join(BOOK_DIR, f"{COIN}_{FAMILY}_book.db")
     if os.path.exists(bp):
@@ -103,7 +109,8 @@ def main():
     be = breakeven(PAID)
     print(f"{COIN} {FAMILY}: {len(rows)} priceable settled windows over "
           f"{days:.1f} days of tape; current gate {CUR}bp; break-even at "
-          f"the measured paid {PAID} = {100*be:.2f}%")
+          f"the measured paid {PAID} = {100*be:.2f}%"
+          + (f"; SINCE={SINCE} (new-rule windows only)" if SINCE else ""))
     if len(rows) < 2 * MIN_N:
         print("Too few windows; backfill the tape or wait.")
         return

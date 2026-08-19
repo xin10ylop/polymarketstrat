@@ -44,7 +44,8 @@ import urllib.parse
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor
 
-from bot.twap_verify import COIN, DB_DIR, FAMILY, NSEC, WINDOW, load_grid
+from bot.twap_verify import (COIN, DB_DIR, FAMILY, NSEC, WINDOW, load_grid,
+                             nsec_at)
 
 LEAD = int(os.environ.get("LEAD", "3"))
 GATE = float(os.environ.get("GATE", "0.5"))
@@ -223,26 +224,30 @@ def load_tape(wtss):
 
 
 def tilt_at(g, w):
-    """(tilt_bp, pick) from only what existed at T-LEAD, carry-forward."""
+    """(tilt_bp, pick) from only what existed at T-LEAD, carry-forward.
+
+    Era-aware since RULE2: a 5m window before 2026-08-14 has a 30s strike,
+    one after has a 60s strike — tools sweeping the full tape span both."""
+    n = nsec_at(w)
     carry, total, present = None, 0.0, 0
     for back in range(1, 121):
-        if (w - NSEC - back) in g:
-            carry = g[w - NSEC - back]
+        if (w - n - back) in g:
+            carry = g[w - n - back]
             break
-    for s in range(w - NSEC, w - LEAD):
+    for s in range(w - n, w - LEAD):
         v = g.get(s)
         if v is not None:
             carry, present = v, present + 1
         if carry is None:
             return None
         total += carry
-    if present < (NSEC - LEAD) * COVER:
+    if present < (n - LEAD) * COVER:
         return None
     spot = next((g[s] for s in range(w - LEAD, w - LEAD - 4, -1) if s in g),
                 None)
     if spot is None:
         return None
-    k = (total + LEAD * spot) / NSEC
+    k = (total + LEAD * spot) / n
     if k <= 0:
         return None
     t = (spot - k) / k * 1e4

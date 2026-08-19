@@ -31,7 +31,17 @@ COIN = os.environ.get("COIN", "btc").lower()
 FAMILY = os.environ.get("FAMILY", "5m")
 DB_DIR = os.environ.get("TWAP_DIR", "bot/data/twapcal")
 WINDOW = 900 if FAMILY == "15m" else 300
-NSEC = 60 if FAMILY == "15m" else 30
+# RULE2 (2026-08-14 00:00 UTC): the venue moved the 5m family from the 30s
+# to the 60s TWAP stream. The 15m family was 60s all along. NSEC is the
+# CURRENT-rule lookback; any tool touching windows that may predate RULE2
+# must ask nsec_at(wts) per window instead of using the scalar.
+RULE2 = 1786665600
+NSEC = int(os.environ.get("NSEC", "60"))
+
+
+def nsec_at(wts):
+    """The strike/settle TWAP lookback in force for this window."""
+    return 30 if FAMILY == "5m" and wts < RULE2 else NSEC
 SLUG = f"{COIN}-updown-{FAMILY}-"
 MIN_COVER = 0.95
 HDRS = {"User-Agent": "Mozilla/5.0"}

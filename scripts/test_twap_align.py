@@ -79,7 +79,10 @@ def run(truth_shift, seed):
     tmp = tempfile.mkdtemp()
     try:
         build(tmp, truth_shift, seed)
-        env = dict(os.environ, PYTHONPATH=ROOT)
+        # the fixture plants a 30s-lookback grid (it pins the alignment
+        # scan's MECHANICS, which are lookback-agnostic); since RULE2 moved
+        # the 5m default to 60s, pin the tool back to the fixture's rule
+        env = dict(os.environ, PYTHONPATH=ROOT, NSEC="30")
         r = subprocess.run([sys.executable, "-m", "bot.twap_align"],
                            cwd=tmp, env=env, capture_output=True, text=True,
                            timeout=300)

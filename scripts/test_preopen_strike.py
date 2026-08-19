@@ -275,9 +275,10 @@ _o4.last_sample_s = max(_o4.samples)
 _s4 = PreopenStrategy(CFG, None, _o4, None, None, None, None)
 _at3 = _s4._tilt(_T0, 3.0)
 _at1 = _s4._tilt(_T0, 1.0)
-check("at a 3s lead the strike has 27 elapsed seconds", _at3[4], 27)
-check("at a 1s lead it has 29 — two more, which is the whole gain",
-      _at1[4], 29)
+check(f"at a 3s lead the strike has {CFG.oracle_twap_s - 3} elapsed seconds",
+      _at3[4], CFG.oracle_twap_s - 3)
+check(f"at a 1s lead it has {CFG.oracle_twap_s - 1} — two more, which is "
+      f"the whole gain", _at1[4], CFG.oracle_twap_s - 1)
 
 # THE ONE LINE AN OPERATOR ACTUALLY READS. `worst` is the smallest achieved
 # lead — the latest the loop ever woke — because that is the number that
@@ -470,7 +471,9 @@ from bot.feeds.oracle import Oracle as _Oracle           # noqa: E402
 from bot.scalp_backtest import tilt_at as _tilt_at       # noqa: E402
 
 _rnd.seed(17)
-_T0 = 1_786_100_000 - 1_786_100_000 % 300
+# post-RULE2 epoch: the live bot only ever prices the CURRENT rule, and
+# tilt_at is era-aware, so the equivalence fixture must sit in this era
+_T0 = 1_786_700_000 - 1_786_700_000 % 300
 _g, _px = {}, 64000.0
 for _s in range(_T0, _T0 + 4 * 3600):
     _px *= 1 + _rnd.gauss(0, 2e-5)

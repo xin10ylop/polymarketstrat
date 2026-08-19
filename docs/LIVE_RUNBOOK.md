@@ -3662,3 +3662,65 @@ them in that order.
 
   QUEUED: re-run the age tables alongside the eth gate re-run in ~3
   days; btc's uncensored second half is the missing piece of the bar.
+
+- 2026-08-19 INCIDENT: RULE2 — THE VENUE CHANGED THE 5m RULE AGAIN, AND
+  THE TRIPWIRE ATE FIVE DAYS DOING ITS JOB. bot.plain showed both 5m
+  units HALTED with "settlement disagreements" (btc 20, eth 16), newest
+  trades ~5.5 days old, while both 15m units traded on. Verified from
+  gamma directly: every 5m market through 2026-08-13 23:55 UTC resolves
+  on the *-usd-twap-30s Chainlink stream; every one from 2026-08-14
+  00:00 UTC resolves on *-usd-twap-60s. RULE2 = 1786665600. Fee schedule
+  (0.07 takerOnly, 20% rebate), tick 0.001, min 5, tie->Up: unchanged.
+  The twapLookbackSeconds field is GONE from gamma; the stream named in
+  resolutionSource is the only machine-readable trace left.
+
+  Mechanics of the five days: the reconciler cross-checks every
+  DISCOVERED window (not only traded ones), so it kept scoring our 30s
+  oracle against the venue's 60s rule all through the halt. The two
+  averages name different winners only on boundary windows: 36 flips in
+  ~2,800 windows ~= 1.3%. The first flip after midnight 08-14 tripped
+  the sticky mismatch halt within minutes of the change — correctly. The
+  cost was human: five days passed before anyone read bot.plain, and the
+  diagnosis then took three curl calls. Hence the new tripwire below.
+
+  COST TO THE PROGRAM, stated honestly: the 5m uncensored launch clock
+  stopped at 08-14 00:00; the btc 5m qualification sample is frozen at
+  121 decisions and restarts under the new rule. The 15m units were
+  never affected and their samples kept accumulating. Because the 60s
+  strike CHANGES THE TILT DEFINITION, every pending 5m improvement bar
+  (gate re-cut, eth touch-only, btc +2c cap, freshness gate) must
+  re-verify on new-rule data before any of it is acted on — the old
+  measurements were of a market that no longer exists in that form.
+
+  FIXES, all tested (8 suites + 3 smokes green):
+    - ORACLE_TWAP_S 5m default 30 -> 60 (config.py; strike and
+      settlement both key off it, deploy files set nothing).
+    - Era-aware analysis: twap_verify.RULE2 + nsec_at(wts); tilt_at now
+      prices each window under the rule in force for it, so full-tape
+      tools stay correct across the boundary. NSEC scalar = current
+      rule (60), env-overridable for old-era runs.
+    - Reconciler RULE-CHANGE TRIPWIRE: fetch_outcome captures gamma's
+      resolutionSource; a settled window naming a stream that disagrees
+      with ORACLE_TWAP_S logs an ERROR and writes a
+      rule_change_suspected event, once per stream. The next silent
+      change is a one-line log read, not a five-day mystery.
+    - gate_sweep SINCE env: SINCE=1786665600 sweeps new-rule windows
+      only — the only population a gate decision now applies to.
+    - scripts/clear_twap60_mismatches.py: self-verifying migration.
+      Recomputes every flagged window under the 60s rule from the
+      recorder's own grid and classes it AGREE / NEAR-TIE / DISAGREE /
+      NO-GRID; clears a unit's flags ONLY if nothing is DISAGREE or
+      NO-GRID; never touches flags outside [RULE2, 2026-08-20); skips
+      15m units; refusal changes nothing and demands a paste.
+    - scripts/test_rule2_migration.py pins all of it (era lookback,
+      stream regex, clearing/refusal/out-of-scope/skip/event-record);
+      test_preopen_strike de-hardcoded from 30s to cfg-derived
+      expectations; test_twap_align pinned to its 30s fixture via NSEC.
+
+  RE-ENABLE SEQUENCE: pull -> suites -> migration dry run -> (paste if
+  REFUSED, else) --apply -> restart units -> confirm evals resume and
+  _mismatches 0 -> tape_backfill the 08-14..19 gap -> gate_sweep with
+  SINCE=1786665600 to re-cut 5m gates under the 60s tilt. launch_ev for
+  5m units now reads ERA=1786665600 (no 5m fills exist between RULE2
+  and re-enable, so RULE2 cleanly starts the new era); 15m units keep
+  the 08-11 era (their rule never changed).

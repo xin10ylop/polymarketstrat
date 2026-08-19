@@ -34,6 +34,9 @@ class Market:
     token_down: str
     tick: float = 0.01
     min_size: float = 5.0
+    # gamma's resolutionSource, captured on outcome fetch: since RULE2 the
+    # stream named here is the ONLY machine-readable trace of the TWAP rule
+    resolution_source: str = ""
 
 
 @dataclass
@@ -326,6 +329,8 @@ class ClobFeed:
                                              timeout=aiohttp.ClientTimeout(total=10)) as r:
                     arr = await r.json()
                 if arr:
+                    mk.resolution_source = arr[0].get(
+                        "resolutionSource") or mk.resolution_source
                     op = arr[0].get("outcomePrices")
                     prices = json.loads(op) if isinstance(op, str) else op
                     if prices and float(max(prices, key=float)) == 1.0:

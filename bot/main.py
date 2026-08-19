@@ -8,6 +8,7 @@ executor. See bot/README.md for deployment.
 """
 import asyncio
 import logging
+import re
 import signal
 import time
 
@@ -32,6 +33,7 @@ async def reconciler(cfg, clob, ledger, toll, oracle):
     toll strategy) so the mismatch tripwire works even when the toll is
     disabled — which is exactly the live configuration (audit 2026-07-30 #6)."""
     done = set()
+    streams_flagged = set()
     while True:
         now = time.time()
         for wts, mk in list(clob.markets.items()):
@@ -40,6 +42,27 @@ async def reconciler(cfg, clob, ledger, toll, oracle):
             if wts in done or now < wts + cfg.window_secs + max(60, cfg.toll_cancel_after_s + 10):
                 continue
             winner = await clob.fetch_outcome(mk)
+            # RULE-CHANGE TRIPWIRE (2026-08-19). The venue moved the 5m
+            # family to the 60s TWAP stream at 2026-08-14 00:00 UTC and the
+            # only machine-readable trace was the stream named in gamma's
+            # resolutionSource (the twapLookbackSeconds field is gone).
+            # The mismatch halt caught it — five days later a human still
+            # had to diagnose it from curl. Name the cause the moment the
+            # first settled window carries a stream we are not computing.
+            m_s = re.search(r"twap-(\d+)s", mk.resolution_source or "")
+            if (m_s and cfg.oracle_authoritative and cfg.oracle_twap_s
+                    and int(m_s.group(1)) != cfg.oracle_twap_s
+                    and m_s.group(1) not in streams_flagged):
+                streams_flagged.add(m_s.group(1))
+                log.error("VENUE RULE CHANGE? %s resolves on a %ss TWAP "
+                          "stream but ORACLE_TWAP_S=%s — every settlement "
+                          "will now cross-check against the wrong rule; "
+                          "migrate the oracle before trusting anything",
+                          mk.slug, m_s.group(1), cfg.oracle_twap_s)
+                ledger.event("rule_change_suspected",
+                             f"w{wts} venue stream {m_s.group(1)}s vs "
+                             f"oracle {cfg.oracle_twap_s}s "
+                             f"({mk.resolution_source})")
             if winner is None:
                 if now > wts + cfg.window_secs + cfg.outcome_patience_s:
                     done.add(wts)   # out of patience; leave fills unmarked

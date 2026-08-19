@@ -303,9 +303,17 @@ class Config:
     # 5m/15m now settle on a rolling Chainlink TWAP: "TWAP at close >= TWAP
     # at open". Length scales with the window (30s / 60s). 0 = the old
     # spot-vs-spot rule, which still governs the 1h family (Binance/UMA).
+    # RULE2 (2026-08-14 00:00 UTC): the venue moved the 5m family from the
+    # 30s to the 60s TWAP stream — gamma resolutionSource now names
+    # *-usd-twap-60s for every 5m window from that midnight on (verified
+    # live 2026-08-19; the twapLookbackSeconds field is gone from gamma
+    # entirely, so the stream name is the only machine-readable trace).
+    # The five dark days of 08-14..19 were this: 20 btc + 16 eth windows
+    # where the 30s and 60s averages named different winners tripped the
+    # sticky mismatch halt — the tripwire doing precisely its job.
     oracle_twap_s: int = _env(
         "ORACLE_TWAP_S",
-        {"5m": 30, "15m": 60}.get(_env("FAMILY", "5m"), 0), int)
+        {"5m": 60, "15m": 60}.get(_env("FAMILY", "5m"), 0), int)
     # a TWAP averaged over a gappy grid is a different number: refuse below
     # this share of the seconds (the recorder saw 89-93% density on a box
     # that was ALSO running seven bots; the bot's own feed backfills)
