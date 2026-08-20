@@ -3860,3 +3860,20 @@ them in that order.
   exact on a planted ledger+tape (hold +19.29; 0.95-through fill 42.9%,
   win|touch 66.7%, EV +31.43 with the rescue case; at-level bound;
   down-side mirror; tape-less decision skipped not defaulted).
+
+- 2026-08-20 EXIT LADDER FIRST RUN — CLOSED (hold stands). btc 5m, 47
+  clean-era decisions: win|touch 100.0% at 0.95 (24 touchers, all won),
+  96.0% at 0.90, 85.7% at 0.85 — at or above every level, so the market
+  does not overpay for near-certainty within our tilt-selected windows.
+  Selling at 0.95 costs -2.55c/decision vs hold, negative in BOTH halves
+  (-2.39/-2.71); 0.90 costs -3.19; 0.85 is a wash (-0.43 through, +1.38
+  at-level, mixed halves) — the calibration-line outcome. Small-n caveat
+  on the record: 24/24 is a Wilson lower bound of ~86%, and eth's
+  new-gate era had only 3 comparable decisions — re-check free with the
+  same command as data accumulates. DISPOSITION: hold-to-resolution
+  stands in paper (was never changing) AND in the live design; the
+  capital-recycling benefit is real but at -2.55c/decision the exit is
+  expensive rent — the redemption path gets BUILT instead (next
+  infrastructure piece). Note for later readers: win|touch here is
+  conditioned on our entries; it says nothing about buying late-window
+  certainty unconditionally.
