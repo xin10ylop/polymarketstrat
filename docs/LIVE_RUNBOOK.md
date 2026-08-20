@@ -3822,3 +3822,19 @@ them in that order.
   on the EU box (user action: create the Vultr Madrid/Stockholm
   instance); launch_ev qualification on the new era; live env block per
   runbook; LIVE_MAX_TRADES_DAY sizing (follows redemption design).
+
+- 2026-08-20 PER-UNIT CLEAN ERAS IN launch_ev. The units' histories
+  diverged past what one ERA can honestly cover: btc 5m's clean era is
+  RULE2 (zero fills between the rule change and its 08-19 restart — by
+  luck); eth 5m's is 2026-08-20 07:39 UTC, when its 0.5-gate deploy went
+  live (pinned from the ledger itself: the first sub-1bp preopen_entry
+  event, epoch 1787211597 — its earlier "new-rule" fills mix 3h of
+  wrong-rule trading on 08-14 before its halt bit, plus a 1.0-gate
+  stretch; the fill-timeline probe showed exactly this, and it explained
+  the nonsense "/day 9" row); the 15m units keep 08-11 12:20 (never
+  halted, never rule-changed). launch_ev now carries the map as
+  defaults, prints it, and ERA= still forces a single era for
+  cross-checks. Smoke-verified on a planted two-unit fixture (pre-era
+  and polluted-stretch decisions excluded; forced era readmits them).
+  The daily scoreboard command is now just: venv/bin/python -m
+  bot.launch_ev.

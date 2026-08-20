@@ -43,20 +43,41 @@ import time
 from bot.pnl_daily import breakeven, wilson
 from bot.scalp_backtest import band
 
-# 2026-08-11 12:20 UTC: btc 5m's mismatch-halt era ended 12:17 and the last
-# structural fix of that day was deployed by 12:20. Everything before is
-# censored by breakers/halts and must not enter a launch decision.
-ERA = int(os.environ.get("ERA", "1786450800"))
+# Clean-era starts PER UNIT (2026-08-20). One global era stopped being
+# honest when the units' histories diverged:
+#   btc 5m   RULE2 (2026-08-14 00:00) — by luck it has zero fills between
+#            the rule change and its 08-19 restart, so RULE2 selects
+#            exactly the post-restart, new-rule population.
+#   eth 5m   2026-08-20 07:39 UTC, when its 0.5-gate deploy went live
+#            (first sub-1bp entry event, epoch 1787211597, minus a few
+#            seconds so that first decision's own fills are included).
+#            Earlier "new-rule" fills mix 3h of WRONG-RULE signal (it
+#            traded 00:04-03:19 on 08-14 before its halt bit) and a
+#            1.0-gate stretch — different populations, not this bot.
+#   15m      2026-08-11 12:20, the original uncensored era: never
+#            halted, and RULE2 never touched the 15m family.
+# ERA= still forces every unit onto one era (for cross-checks).
+ERAS = {"preopen-btc": 1786665600, "preopen-eth": 1787211590,
+        "preopen-btc15": 1786450800, "preopen-eth15": 1786450800}
+ERA = int(os.environ["ERA"]) if os.environ.get("ERA") else None
+DEFAULT_ERA = 1786450800
 
 
 def main():
-    print(f"uncensored era starts "
-          f"{time.strftime('%Y-%m-%d %H:%M UTC', time.gmtime(ERA))} "
-          f"(ERA= to override)\n")
+    if ERA is not None:
+        print(f"FORCED single era for all units: "
+              f"{time.strftime('%Y-%m-%d %H:%M UTC', time.gmtime(ERA))}\n")
+    else:
+        print("per-unit clean eras (ERA= forces one era on all units):")
+        for u, e in sorted(ERAS.items()):
+            print(f"  {u:<16} "
+                  f"{time.strftime('%Y-%m-%d %H:%M UTC', time.gmtime(e))}")
+        print()
     print(f"{'unit':<16} {'n':>4} {'/day':>5} {'EV c/sh':>8} "
           f"{'95% band':>18} {'win%':>6} {'b/e%':>6} {'agree':>6}")
     for path in sorted(glob.glob("bot/data/preopen-*/paper.db")):
         name = os.path.basename(os.path.dirname(path))
+        era = ERA if ERA is not None else ERAS.get(name, DEFAULT_ERA)
         db = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
         try:
             rows = db.execute(
@@ -65,7 +86,7 @@ def main():
                 "WHERE f.pnl IS NOT NULL AND f.strategy='preopen' "
                 "AND s.winner IS NOT NULL AND s.mismatch=0 "
                 "GROUP BY f.wts HAVING SUM(f.size) >= 5 AND MAX(f.ts) >= ? "
-                "ORDER BY MAX(f.ts)", (ERA,)).fetchall()
+                "ORDER BY MAX(f.ts)", (era,)).fetchall()
         except sqlite3.Error as e:
             print(f"{name:<16} unreadable ({str(e)[:40]})")
             continue
