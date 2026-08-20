@@ -3838,3 +3838,25 @@ them in that order.
   and polluted-stretch decisions excluded; forced era readmits them).
   The daily scoreboard command is now just: venv/bin/python -m
   bot.launch_ev.
+
+- 2026-08-20 exit_ladder ADDED — "why not sell at 0.95 instead of waiting
+  for resolution?" (operator question, and a good one). The economics
+  first: if the market is calibrated, price = survival probability and
+  selling at L is EV-neutral by construction — the win|touch column
+  measures the actual miscalibration directly (above L: holding tokens
+  that touched L is worth more than L; below: selling captures value).
+  Two structural sweeteners favor selling anyway: the exit is a MAKER
+  order (no fee, +20% rebate, not counted — conservative), and for LIVE
+  a sale recycles collateral through the book instantly, bypassing the
+  on-chain redemption a held winner requires (launch blocker #1). Fills
+  are decided from the FULL-WINDOW tape (the bot's own post-open
+  tracking stops at 90s, and 0.95 touches arrive in the last minute),
+  through/at-level rules as in maker_probe, per-unit clean eras imported
+  from launch_ev. PRE-REGISTERED: paper NEVER adopts an exit (holding
+  records the full outcome; the replay prices any exit for free — same
+  principle as the shadow stop); the LIVE adoption bar is "not
+  materially worse than hold in both halves on both coins", weaker than
+  the usual "must beat" because the redemption bypass is real. Smoke
+  exact on a planted ledger+tape (hold +19.29; 0.95-through fill 42.9%,
+  win|touch 66.7%, EV +31.43 with the rescue case; at-level bound;
+  down-side mirror; tape-less decision skipped not defaulted).
