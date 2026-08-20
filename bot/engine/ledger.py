@@ -187,6 +187,19 @@ class Ledger:
             (since, n)).fetchall()
         return sum(p for (p,) in rows), len(rows)
 
+    def winning_settled_windows(self, min_age_s=120.0):
+        """Windows holding WINNING shares whose settlement is at least
+        min_age_s old — the redemption work list (launch blocker #1).
+        Age is measured from settle_ts, not fill time: redeeming before
+        the venue's resolution is final would revert and spend gas."""
+        return self.db.execute(
+            "SELECT f.wts, SUM(f.size) FROM fills f "
+            "JOIN settlements s ON f.wts = s.wts "
+            "WHERE f.settle = 1.0 AND f.pnl IS NOT NULL "
+            "AND s.settle_ts < ? GROUP BY f.wts "
+            "HAVING SUM(f.size) >= 1 ORDER BY f.wts",
+            (time.time() - min_age_s,)).fetchall()
+
     def preopen_trailing_pnl(self, n):
         """Sum of the last n settled preopen DECISIONS' pnl (grouped by
         window — audit F4: one sweep writes a row per price level). Same

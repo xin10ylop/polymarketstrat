@@ -350,6 +350,25 @@ class Config:
     # individually never see (audit 2026-07-30 finding #7)
     live_max_drawdown_frac: float = _env("LIVE_MAX_DRAWDOWN_FRAC", 0.5, float)
     live_max_trades_day: int = _env("LIVE_MAX_TRADES_DAY", 40, int)
+    # --- redemption (live; launch blocker #1, built 2026-08-20) ---
+    # A won position pays only when its tokens are redeemed on-chain; the
+    # CLOB never does it. LIVE-SETUP REQUIREMENT: the account must be an
+    # EOA (PM_SIGNATURE_TYPE=0) — proxy/Magic accounts hold tokens in the
+    # proxy and need the relayer to redeem. REDEEM_DRY defaults ON even in
+    # live: the shadow phase verifies the pipeline (pending discovery,
+    # conditionId resolution, amounts) against the venue UI before a human
+    # deliberately sets REDEEM_DRY=0 in the live env block. Collateral is
+    # bridged USDC.e, the venue's settlement token — VERIFY on the live box
+    # during shadow (exchange.collateral()) before going wet.
+    redeem_every_s: float = _env("REDEEM_EVERY_S", 120.0, float)
+    redeem_min_age_s: float = _env("REDEEM_MIN_AGE_S", 120.0, float)
+    redeem_max_batch: int = _env("REDEEM_MAX_BATCH", 5, int)
+    redeem_dry: bool = _env("REDEEM_DRY", "1") == "1"
+    polygon_rpc: str = _env("POLYGON_RPC", "")
+    ctf_address: str = _env(
+        "CTF_ADDRESS", "0x4D97DCd97eC945f40cF65F87097ACe5EA0476045")
+    collateral_address: str = _env(
+        "COLLATERAL_ADDRESS", "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174")
     pm_signature_type: int = _env("PM_SIGNATURE_TYPE", 1, int)  # 1=email/Magic, 2=browser proxy
     pm_private_key: str = _env("PM_PRIVATE_KEY", "")
     # (pm_api_key/secret/passphrase deleted 2026-08-13: never read — live.py

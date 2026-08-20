@@ -308,6 +308,17 @@ async def amain():
         asyncio.create_task(_supervised("healer", settlement_healer, CFG, ledger), name="healer"),
         asyncio.create_task(_supervised("status", status, CFG, ledger, oracle, spot, clob, toll, snipe, preopen), name="status"),
     ]
+    if CFG.mode == "live":
+        # winnings collect themselves or the wallet starves (blocker #1);
+        # REDEEM_DRY defaults on, so the first live runs only LOG what
+        # they would redeem until a human flips it after shadow-phase
+        # verification
+        from bot.engine.redeem import Redeemer
+        tasks += [
+            asyncio.create_task(
+                _supervised("redeemer", Redeemer(CFG, ledger).run),
+                name="redeemer"),
+    ]
     if kfeed is not None:
         tasks.append(asyncio.create_task(_supervised("kalshi", kfeed.run), name="kalshi"))
     if reconciler_task is not None:

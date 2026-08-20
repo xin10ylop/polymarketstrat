@@ -3877,3 +3877,35 @@ them in that order.
   infrastructure piece). Note for later readers: win|touch here is
   conditioned on our entries; it says nothing about buying late-window
   certainty unconditionally.
+
+- 2026-08-20 REDEMPTION PATH BUILT (launch blocker #1 of 6, the big
+  one). bot/engine/redeem.py: a supervised live-only loop that finds
+  every window holding winning shares whose settlement is past finality
+  age, resolves its conditionId from gamma by slug, and redeems via
+  ConditionalTokens.redeemPositions(collateral, 0x0, conditionId,
+  [1,2]) on Polygon — verified 2026-08-20 that the up/down markets are
+  plain binary CTF (gamma negRisk=false), so no NegRiskAdapter is
+  involved and both index sets redeem in one call.
+
+  SHADOW-FIRST BY DEFAULT: REDEEM_DRY=1 even in live mode — the loop
+  records redeem_dry events naming exactly what it WOULD redeem; the
+  shadow phase checks those against the venue UI before a human
+  deliberately sets REDEEM_DRY=0. web3 imports lazily inside the send
+  path only (paper boxes never need it); a failed send writes
+  redeem_error and the window stays pending forever — retried every
+  pass, never dropped.
+
+  TWO LIVE-SETUP REQUIREMENTS added to the env block: (1) the account
+  MUST be an EOA — PM_SIGNATURE_TYPE=0 — because proxy/Magic accounts
+  hold their tokens inside the proxy and can only redeem via the
+  relayer; an EOA calls the contract directly and needs a little POL
+  for gas; (2) verify the collateral address (default bridged USDC.e
+  0x2791...4174) against exchange.collateral() on the live box during
+  shadow before going wet. Pinned by scripts/test_redeemer.py: work
+  list (winners past finality only), dry mode records-once-sends-
+  nothing, wet mode sends-once-never-repeats, failures recorded and
+  retried. LAUNCH BLOCKERS NOW: built 2 of 6 (redemption, fast-bleed
+  breaker); remaining: EU box + shadow phase (user action), launch_ev
+  qualification (accumulating), live env block application, trades/day
+  sizing (now simple: redemption runs every 2 minutes, so turnover no
+  longer binds it).
