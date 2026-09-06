@@ -3909,3 +3909,54 @@ them in that order.
   qualification (accumulating), live env block application, trades/day
   sizing (now simple: redemption runs every 2 minutes, so turnover no
   longer binds it).
+
+- 2026-08-21 PERPS RESEARCH — "pair the binaries with Polymarket/Hyperliquid
+  perps, check leverage" (operator). Verified against the venues, not
+  memory, and measured live from this box:
+
+  FACTS. Polymarket Perps: announced 04-21 (CFTC DCM), full launch 09-03;
+  67 instruments, BTC-USD id 6 / ETH-USD id 7, 20x max; collateral pUSD
+  (separate from prediction-market USDC); index = weighted Pyth +
+  Chainlink Data Streams + Hyperliquid, published every 200ms; funding
+  formula IDENTICAL to Hyperliquid's (0.01%/8h interest + clamped
+  premium, hourly settle, book-VWAP sampled every 5s); fees 0.040%
+  taker / 0.0125% maker at base tier; no US/Canada order placement;
+  $75k/day maker-rewards pool across active markets (>=1% of trailing
+  7d maker volume, quotes within 5-20bp of mid). Hyperliquid BTC: 40x,
+  0.045%/0.015%, hourly funding. Public read-only data on both, no auth.
+
+  MEASURED (one snapshot): BTC spread 0.13bp (= 1 tick) on BOTH venues;
+  Polymarket top-10 depth ~2.7 BTC/side vs Hyperliquid 4-35; funding on
+  BOTH venues pinned at the neutral 0.00125%/hr for the whole recorded
+  history (PM 24h flat; HL 72h mean 0.00102%). Zero funding
+  differential; basis sub-3bp and non-simultaneous. Polymarket Perps is
+  a tight, Hyperliquid-anchored clone — not a sloppy new venue.
+
+  VERDICT 1 — pairing perps with OUR binaries: NO, on arithmetic. Our
+  edge is a head start (spot already 0.5-2bp above a LAGGED strike),
+  which a perp — priced off the CURRENT index — cannot access (P(spot_T
+  >= spot_now) = 50% under a martingale). Hedging a 5-minute digital
+  with a linear perp needs notional ~ stake/(sigma*sqrt(T)) ~ 3,000x
+  the stake; round-trip perp fees on that (~0.08-0.09%) cost ~$2.5 per
+  $1 of binary stake against ~$0.05 of edge: the hedge costs ~50x the
+  edge. Closed.
+
+  VERDICT 2 — perps as a separate engine: the classic new-venue
+  treasures (funding-differential carry, fat basis) are NOT present:
+  identical funding mechanics, shared index, 1-tick spreads, neutral
+  funding on both sides. What remains is the subsidized maker pool
+  (~$1.1k/market/day): a 200ms-index, HL-hedged market-making business
+  competing with firms already quoting at one tick — not this stack.
+  Not built; recorded so it is not re-litigated without new facts.
+
+  LEVERAGE. The binaries are already ~2x implicit (risk 0.55 to win
+  0.45). Kelly at 58% win / 0.55 price: f* ~ 6.6% full-Kelly ->
+  1.5-2% of bankroll per decision is the sane size; never levered.
+  Perps at 20x are a liquidation machine (BTC 5% intraday moves are
+  routine); any perp leg, ever, at <=3x.
+
+  WHERE THE TREASURE ACTUALLY IS: the binary engine's own adverse-
+  selection question (refused.py) and eth's new mismatch — both awaiting
+  the operator's paste. Redemption path (blocker #1) confirmed complete
+  and committed (8fd7c95, test_redeemer ALL PASS): dry-mode default,
+  EOA-account requirement recorded.
